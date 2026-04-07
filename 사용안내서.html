@@ -176,6 +176,7 @@
     <div class="nav-item" data-target="prog-jisikin" onclick="goTo('prog-jisikin')"><span class="nav-icon">❓</span> 지식인</div>
     <div class="nav-item" data-target="prog-youtube" onclick="goTo('prog-youtube')"><span class="nav-icon">▶️</span> 유튜브댓글</div>
     <div class="nav-item" data-target="prog-tiktok" onclick="goTo('prog-tiktok')"><span class="nav-icon">🎵</span> 틱톡 스크립트</div>
+    <div class="nav-item" data-target="prog-shorts" onclick="goTo('prog-shorts')"><span class="nav-icon">🎬</span> 숏츠 제작</div>
     <div class="nav-item" data-target="prog-community" onclick="goTo('prog-community')"><span class="nav-icon">💬</span> 커뮤니티 침투</div>
     <div class="nav-item" data-target="prog-powercontent" onclick="goTo('prog-powercontent')"><span class="nav-icon">⚡</span> 파워컨텐츠</div>
     <div class="nav-item" data-target="prog-threads" onclick="goTo('prog-threads')"><span class="nav-icon">🧵</span> 쓰레드</div>
@@ -989,7 +990,74 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-community">12. 커뮤니티 침투</h1>
+<h1 id="prog-shorts">12. 숏츠 제작 (풀 자동화)</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">🎬</div>
+  <div class="program-header-info">
+    <div class="program-header-title">숏츠 제작</div>
+    <div class="program-header-meta">사이드바 > 콘텐츠 생산 > 숏츠 제작 · 10단계 풀 자동화 · 비용: ~$3.5-5.0/영상</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 소재 입력부터 YouTube 업로드까지 10단계를 자동화합니다. 사람이 할 일은 CapCut에서 Export 버튼 1번 누르는 것뿐입니다.</p>
+
+<h3>10단계 파이프라인</h3>
+<table>
+  <tr><th>단계</th><th>내용</th><th>자동/수동</th></tr>
+  <tr><td>00. 소재 확인</td><td>제품/타겟/문제/감정/CTA 검증</td><td>자동</td></tr>
+  <tr><td>01. 벤치마킹</td><td>YouTube URL 크롤링 → 자막/댓글/패턴 추출</td><td>자동 (URL 선택)</td></tr>
+  <tr><td>02. 전략</td><td>컨셉 3세트 생성 → 자동 or 사용자 선택</td><td>auto/ask</td></tr>
+  <tr><td>03. 기획서</td><td>훅→공감→전환→증거→결과→CTA 상세 기획</td><td>자동</td></tr>
+  <tr><td>04. 대본</td><td>기획서 기반 대본 생성 + 규칙 검수 (리비전 최대 3회)</td><td>자동</td></tr>
+  <tr><td>05. AI 검수</td><td>자연스러움/설득력/채널적합도 평가</td><td>자동</td></tr>
+  <tr><td>06. TTS + 자막</td><td>ElevenLabs 음성 생성 + SRT 자막 + 문장 타이밍</td><td>자동</td></tr>
+  <tr><td>07. 비주얼</td><td>씬별 이미지 프롬프트 → Whisk AI 이미지 생성</td><td>자동</td></tr>
+  <tr><td>08. CapCut 편집</td><td>draft_content.json 자동 생성 → CapCut에 프로젝트 등록</td><td>자동</td></tr>
+  <tr><td>09. YouTube 업로드</td><td>렌더링된 mp4 감지 → YouTube Data API 업로드</td><td>자동</td></tr>
+</table>
+
+<h3>수동 단계 (1곳만)</h3>
+<p>08단계에서 CapCut 프로젝트가 자동 생성됩니다. CapCut 앱에서 해당 프로젝트를 열고 <strong>Export 버튼</strong>만 클릭하세요. 렌더링된 mp4가 09_upload 폴더에 들어가면 자동으로 YouTube 업로드됩니다.</p>
+
+<h3>사용 방법 (대시보드)</h3>
+<div class="step-list">
+  <div class="step-item"><div class="step-content"><strong>소재 입력</strong><p>제품명, 타겟, 핵심문제, 감정, 신뢰근거, CTA를 입력합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>모드 선택</strong><p><strong>Auto</strong>: 전 과정 자동. <strong>Ask</strong>: 전략 선택과 업로드 전에 확인.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>벤치마킹 URL (선택)</strong><p>참고할 YouTube 숏츠 URL을 입력하면 패턴을 분석해서 전략에 반영합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>"풀 자동화 실행" 클릭</strong><p>10단계가 순차 실행됩니다. 진행 상황이 실시간으로 표시됩니다.</p></div></div>
+</div>
+
+<h3>Google Drive 연동</h3>
+<p>TTS 생성 파일(mp3, srt, txt)은 자동으로 Google Drive의 <strong>"숏츠_output"</strong> 폴더에 업로드됩니다. 업로드 후 로컬 파일은 자동 삭제되어 용량을 절약합니다.</p>
+<ul>
+  <li>설정: 프로젝트 루트에 <code>credentials.json</code> (Google OAuth) 필요</li>
+  <li>최초 1회 브라우저 로그인 → 이후 자동 갱신</li>
+  <li>credentials.json 없으면 로컬 저장으로 동작 (기존대로)</li>
+</ul>
+
+<h3>CapCut 연동</h3>
+<p>08_edit 단계에서 생성된 프로젝트 JSON이 CapCut 로컬 폴더에 자동 등록됩니다.</p>
+<ul>
+  <li>설정: <code>.env</code>에 <code>CAPCUT_DRAFTS_DIR</code> 경로 필요</li>
+  <li>CapCut 앱에서 프로젝트 목록에 자동으로 나타남</li>
+  <li>Ken Burns 효과, 페이드 전환 자동 적용</li>
+</ul>
+
+<h3>비용 (영상 1개당)</h3>
+<table>
+  <tr><th>항목</th><th>비용</th></tr>
+  <tr><td>Claude (전략+대본+기획+검수)</td><td>~$0.5-1.0</td></tr>
+  <tr><td>ElevenLabs TTS</td><td>~$2.5-3.0</td></tr>
+  <tr><td>Whisk AI 이미지</td><td>~$0.5-1.0</td></tr>
+  <tr><td>YouTube API</td><td>무료</td></tr>
+  <tr><td><strong>합계</strong></td><td><strong>~$3.5-5.0</strong></td></tr>
+</table>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-community">13. 커뮤니티 침투</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
