@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from .state_machine import ProjectState
+from .workflow import WorkflowConfig, CostTracker
 from .common import (
     check_server, call_api, call_api_json, get_event, get_all_events,
     ai_review, print_step, print_report,
@@ -24,8 +25,39 @@ class BasePipeline(ABC):
     channel: str = ""           # 하위 클래스에서 설정
     steps: list[str] = []       # 하위 클래스에서 설정 (단계 이름 리스트)
 
-    def __init__(self, project: Optional[ProjectState] = None):
+    def __init__(self, project: Optional[ProjectState] = None,
+                 workflow: Optional[WorkflowConfig] = None):
         self.project = project
+        self.workflow = workflow or WorkflowConfig()
+        self.cost = CostTracker()
+        self._ask_callback = None  # Slack/Dashboard에서 설정
+
+    def set_ask_callback(self, callback):
+        """ask 모드에서 사용자 입력을 받을 콜백 설정.
+
+        callback(question: str, options: list[dict]) -> int (선택 인덱스)
+        """
+        self._ask_callback = callback
+
+    def ask_user(self, question: str, options: list[dict]) -> int:
+        """ask 모드에서 사용자에게 질문. auto면 0(첫번째) 반환."""
+        if not self.workflow.should_ask("current"):
+            return 0
+        if self._ask_callback:
+            return self._ask_callback(question, options)
+        # CLI fallback
+        print(f"\n{question}")
+        for i, opt in enumerate(options):
+            label = opt.get("label", opt.get("topic", str(opt)))
+            print(f"  [{i}] {label}")
+        while True:
+            try:
+                choice = int(input("선택 (번호): "))
+                if 0 <= choice < len(options):
+                    return choice
+            except (ValueError, EOFError):
+                pass
+            print(f"  0~{len(options)-1} 사이 숫자를 입력하세요.")
 
     # ── 엔트리 포인트 ──
 
@@ -39,6 +71,9 @@ class BasePipeline(ABC):
             print(f"프로젝트 생성: {self.project.project_id}")
         else:
             print(f"프로젝트 재개: {self.project.project_id}")
+
+        # workflow.json 저장
+        self.workflow.save(self.project.root)
 
         # 미완료 단계부터 실행
         next_step = self.project.find_next_step(self.steps)
@@ -64,6 +99,10 @@ class BasePipeline(ABC):
                 print(f"  단계 실패: {e}")
                 self.project.update(last_error=str(e))
                 raise
+
+        # 비용 요약 저장
+        if self.cost.items:
+            self.project.save_step_file("cost", "summary.json", self.cost.summary())
 
         self.finalize(args)
         return self.project
