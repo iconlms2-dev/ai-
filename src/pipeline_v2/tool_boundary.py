@@ -36,6 +36,42 @@ AGENT_PERMISSIONS = {
     **{f"{ch}-pipeline": {"read": True, "write": True, "execute": True}
        for ch in ["shorts", "blog", "cafe-seo", "cafe-viral", "jisikin",
                    "youtube", "tiktok", "community", "powercontent", "threads"]},
+
+    # ── 계층 구조 에이전트 ──
+    # 사장 (총괄) — 읽기 + 위임만, 직접 실행 안 함
+    "master-orchestrator": {"read": True, "write": False, "execute": False},
+    # 팀장 — 담당 영역 읽기 + 위임
+    "content-lead": {"read": True, "write": False, "execute": True},
+    "analytics-lead": {"read": True, "write": False, "execute": False},
+    "ops-lead": {"read": True, "write": False, "execute": False},
+}
+
+
+# ── 에이전트별 API 접근 범위 ──
+
+AGENT_API_ACCESS = {
+    # 직원 레벨 — 자기 채널 API만
+    **{f"{ch}-writer": [f"/api/{ch.replace('-', '_')}/generate", f"/api/{ch.replace('-', '_')}/script"]
+       for ch in ["shorts", "blog", "cafe-seo", "cafe-viral", "jisikin",
+                   "youtube", "tiktok", "community", "powercontent", "threads"]},
+    **{f"{ch}-reviewer": ["/api/review/evaluate"]
+       for ch in ["shorts", "blog", "cafe-seo", "cafe-viral", "jisikin",
+                   "youtube", "tiktok", "community", "powercontent", "threads"]},
+    **{f"{ch}-pipeline": [f"/api/{ch.replace('-', '_')}/*"]
+       for ch in ["shorts", "blog", "cafe-seo", "cafe-viral", "jisikin",
+                   "youtube", "tiktok", "community", "powercontent", "threads"]},
+
+    # 팀장 레벨 — 담당 영역 전체
+    "content-lead": ["/api/*/generate", "/api/*/save-notion"],
+    "analytics-lead": ["/api/keywords/*", "/api/performance/*", "/api/status/*", "/api/report/*"],
+    "ops-lead": ["/api/scheduler/*", "/api/schedule/*", "/api/naver/accounts*",
+                 "/api/youtube/accounts*", "/api/threads/accounts*", "/api/cafe24/*"],
+
+    # 사장 레벨 — 전체 읽기 + 위임
+    "master-orchestrator": ["*"],
+
+    # 유틸리티 — 읽기만
+    "data-researcher": ["/api/keywords/*", "/api/status/sync"],
 }
 
 
@@ -89,6 +125,33 @@ def check_permission(agent_name: str, action: str) -> bool:
             )
 
     return True
+
+
+def check_api_access(agent_name: str, api_path: str) -> bool:
+    """에이전트가 해당 API 경로에 접근 가능한지 확인.
+
+    Args:
+        agent_name: 에이전트 이름
+        api_path: API 경로 (예: "/api/blog/generate")
+
+    Returns:
+        True if allowed
+
+    Raises:
+        ToolBoundaryError if forbidden
+    """
+    import fnmatch
+    allowed = AGENT_API_ACCESS.get(agent_name)
+    if allowed is None:
+        return True  # 명시적 제한 없으면 허용
+
+    for pattern in allowed:
+        if fnmatch.fnmatch(api_path, pattern):
+            return True
+
+    raise ToolBoundaryError(
+        f"API 접근 거부: {agent_name}은 '{api_path}'에 접근할 수 없음"
+    )
 
 
 def enforce(agent_name: str, action: str):

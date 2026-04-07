@@ -1,0 +1,10 @@
+{
+  "project_id": "test-state-003",
+  "channel": "test-channel",
+  "status": "draft",
+  "current_step": 0,
+  "revision_count": 0,
+  "strategy_rollback_count": 0,
+  "created_at": "2026-04-07T20:32:52.740468",
+  "updated_at": "2026-04-07T20:32:52.740471"
+}

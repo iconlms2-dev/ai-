@@ -98,7 +98,25 @@ def test_rules(filepath):
             pass
 
 
-# ─── 4. rule_validators 자체 테스트 ───
+# ─── 4. server.py 직접 수정 감지 ───
+
+def test_server_py(filepath):
+    """server.py에 엔드포인트가 직접 추가되면 경고."""
+    if os.path.basename(filepath) != "server.py":
+        return
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+        if re.search(r'@app\.(get|post|put|delete|patch)', content):
+            fail("server.py에 직접 엔드포인트 추가 감지 — src/api/{domain}.py에 추가하세요")
+        if len(content.splitlines()) > 30:
+            fail(f"server.py가 {len(content.splitlines())}줄 — 진입점은 30줄 이하여야 합니다")
+    except Exception:
+        pass
+
+
+# ─── 5. rule_validators 자체 테스트 ───
+
 
 def test_validators():
     """규칙 검수기가 정상 동작하는지 기본 테스트."""
@@ -126,7 +144,7 @@ def test_validators():
         fail(f"rule_validators 테스트 실패: {e}")
 
 
-# ─── 5. state_machine 테스트 ───
+# ─── 6. state_machine 테스트 ───
 
 def test_state_machine():
     """상태 전이 규칙이 코드로 강제되는지 검증."""
@@ -161,6 +179,7 @@ def main():
         if filepath.endswith(".py"):
             test_syntax(filepath)
             test_rules(filepath)
+            test_server_py(filepath)
             test_import(filepath)
     else:
         # 전체 테스트
