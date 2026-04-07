@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"call_claude.*\\\\\"[a-z]\" /Users/iconlms/Desktop/안티그래비티/src/api/*.py)",
+      "Bash(sort -t: -k2 -rn)"
+    ]
+  }
+}

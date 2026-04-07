@@ -1,0 +1,118 @@
+{
+  "project": "안티그래비티 마케팅 자동화",
+  "updated": "2026-04-08",
+  "total_agents": 50,
+  "active_agents": 50,
+  "shell_agents": 10,
+
+  "hierarchy": {
+    "master-orchestrator": {
+      "role": "총괄 오케스트레이터 (사장)",
+      "model": "opus",
+      "children": {
+        "content-lead": {
+          "role": "콘텐츠팀장",
+          "model": "opus",
+          "channels": {
+            "blog": {
+              "pipeline": {"name": "blog-pipeline", "model": "opus", "role": "흐름 제어 (writer/reviewer spawn)"},
+              "strategist": {"name": "blog-strategist", "model": "sonnet", "status": "껍데기(향후 활성화)"},
+              "writer": {"name": "blog-writer", "model": "sonnet", "status": "활성", "role": "POST /api/blog/generate 호출"},
+              "reviewer": {"name": "blog-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(2200자+,키워드8+,소제목4+,사진태그) + AI검수"}
+            },
+            "cafe-seo": {
+              "pipeline": {"name": "cafe-seo-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "cafe-seo-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "cafe-seo-writer", "model": "sonnet", "status": "활성", "role": "POST /api/cafe/generate 호출"},
+              "reviewer": {"name": "cafe-seo-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(800~1500자,키워드3~6,댓글3+,광고금지) + AI검수"}
+            },
+            "cafe-viral": {
+              "pipeline": {"name": "cafe-viral-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "cafe-viral-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "cafe-viral-writer", "model": "sonnet", "status": "활성", "role": "POST /api/viral/generate 호출 (3단계)"},
+              "reviewer": {"name": "cafe-viral-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(3단계존재,각200자+,광고금지) + AI검수"}
+            },
+            "shorts": {
+              "pipeline": {"name": "shorts-pipeline", "model": "opus", "role": "흐름 제어 + TTS"},
+              "strategist": {"name": "shorts-strategist", "model": "sonnet", "status": "활성(spawn)", "role": "주제 5개 생성 → 사용자 선택"},
+              "writer": {"name": "shorts-writer", "model": "sonnet", "status": "활성", "role": "POST /api/shorts/script + hooks 호출"},
+              "reviewer": {"name": "shorts-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(300~800자,훅,CTA,이모지) + AI검수 + rollback판단"}
+            },
+            "threads": {
+              "pipeline": {"name": "threads-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "threads-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "threads-writer", "model": "sonnet", "status": "활성", "role": "POST /api/threads/generate 호출"},
+              "reviewer": {"name": "threads-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(100~500자,이모지5이하,광고3미만,말투) + AI검수"}
+            },
+            "tiktok": {
+              "pipeline": {"name": "tiktok-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "tiktok-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "tiktok-writer", "model": "sonnet", "status": "활성", "role": "POST /api/tiktok/generate 호출"},
+              "reviewer": {"name": "tiktok-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(200~500자,훅,이모지,메타표기) + AI검수"}
+            },
+            "youtube": {
+              "pipeline": {"name": "youtube-pipeline", "model": "opus", "role": "흐름 제어 + 영상검색/수집"},
+              "strategist": {"name": "youtube-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "youtube-writer", "model": "sonnet", "status": "활성", "role": "POST /api/youtube/generate 호출"},
+              "reviewer": {"name": "youtube-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(50~200자,관련어,URL금지,광고금지) + AI검수"}
+            },
+            "jisikin": {
+              "pipeline": {"name": "jisikin-pipeline", "model": "opus", "role": "흐름 제어 + Notion 저장"},
+              "strategist": {"name": "jisikin-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "jisikin-writer", "model": "sonnet", "status": "활성", "role": "POST /api/jisikin/generate 호출"},
+              "reviewer": {"name": "jisikin-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(답1 300자+,답2 200자+,분리,키워드) + AI검수"}
+            },
+            "community": {
+              "pipeline": {"name": "community-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "community-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "community-writer", "model": "sonnet", "status": "활성", "role": "POST /api/community/generate 호출"},
+              "reviewer": {"name": "community-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(200자+,댓글3+,광고10패턴) + AI검수"}
+            },
+            "powercontent": {
+              "pipeline": {"name": "powercontent-pipeline", "model": "opus", "role": "흐름 제어"},
+              "strategist": {"name": "powercontent-strategist", "model": "sonnet", "status": "껍데기"},
+              "writer": {"name": "powercontent-writer", "model": "sonnet", "status": "활성", "role": "POST /api/powercontent/generate 호출"},
+              "reviewer": {"name": "powercontent-reviewer", "model": "sonnet", "status": "활성", "role": "rule검수(3000자+,키워드10+,광고제목/설명) + AI검수"}
+            }
+          }
+        },
+        "analytics-lead": {
+          "role": "분석팀장",
+          "model": "sonnet",
+          "agents": {
+            "keyword-analyzer": {"role": "SERP 분석 + 경쟁 강도 + 상위글 분석"},
+            "data-researcher": {"role": "외부 소스 레퍼런스 수집 (읽기전용)"},
+            "pattern-extractor": {"role": "레퍼런스에서 성공 패턴/팩트 추출"},
+            "video-analyst": {"role": "YouTube 영상 정보 분석"}
+          }
+        },
+        "ops-lead": {
+          "role": "운영팀장",
+          "model": "sonnet",
+          "agents": {
+            "code-reviewer": {"role": "코드 리뷰 (체크리스트 기반)", "model": "sonnet"},
+            "debugger": {"role": "에러 원인 분석 및 수정", "model": "sonnet"}
+          }
+        }
+      }
+    }
+  },
+
+  "summary": {
+    "총괄": 1,
+    "팀장": 3,
+    "파이프라인(opus)": 10,
+    "전략가(sonnet,껍데기)": 10,
+    "작성자(sonnet,활성)": 10,
+    "검수자(sonnet,활성)": 10,
+    "시스템": 2,
+    "유틸리티": 4
+  },
+
+  "role_separation": {
+    "pipeline": "흐름 제어만. writer/reviewer를 spawn하고 결과를 받아서 다음 단계로 넘김",
+    "strategist": "껍데기. 향후 키워드별 전략 판단 로직 추가 시 활성화",
+    "writer": "server.py API 호출 → 멘토 프롬프트로 콘텐츠 생성. job_state 수정 불가",
+    "reviewer": "1차 rule-validator(코드) + 2차 AI검수. PASS/FAIL 판정. 콘텐츠 수정 불가"
+  }
+}
