@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# 기존 8000 포트 프로세스 종료 (포트 충돌 방지)
+lsof -ti:8000 | xargs kill -9 2>/dev/null
+sleep 1
+
+# 터미널에서 서버 실행 (macOS 보안 우회)
+osascript -e 'tell application "Terminal"
+    do script "cd /Users/iconlms/Desktop/안티그래비티 && python3 server.py"
+end tell'
+
+# 서버가 실제로 뜰 때까지 대기 (최대 10초)
+for i in $(seq 1 20); do
+    curl -s http://localhost:8000 > /dev/null 2>&1 && break
+    sleep 0.5
+done
+
+# 브라우저 열기
+open http://localhost:8000

@@ -1,0 +1,116 @@
+{
+  "daily": {
+    "generate_remind": {
+      "enabled": true,
+      "time": "09:00",
+      "label": "콘텐츠 생성"
+    },
+    "review_remind": {
+      "enabled": true,
+      "time": "14:00",
+      "label": "콘텐츠 검수"
+    },
+    "deploy_remind": {
+      "enabled": true,
+      "time": "17:00",
+      "label": "콘텐츠 배포"
+    }
+  },
+  "weekly": {
+    "keyword_analysis": {
+      "enabled": true,
+      "day": "mon",
+      "time": "09:00",
+      "auto_run": false,
+      "label": "키워드 분석"
+    },
+    "channel_assign": {
+      "enabled": true,
+      "day": "mon",
+      "time": "10:00",
+      "auto_run": false,
+      "label": "채널 배정"
+    },
+    "performance_collect": {
+      "enabled": true,
+      "day": "fri",
+      "time": "17:00",
+      "auto_run": true,
+      "label": "성과 수집"
+    },
+    "weekly_report": {
+      "enabled": true,
+      "day": "fri",
+      "time": "18:00",
+      "auto_run": true,
+      "label": "주간 리포트"
+    }
+  },
+  "history": [
+    {
+      "task": "generate_remind",
+      "type": "remind",
+      "time": "2026-04-02T09:00:46.875902"
+    },
+    {
+      "task": "review_remind",
+      "type": "remind",
+      "time": "2026-04-02T14:00:19.385842"
+    },
+    {
+      "task": "deploy_remind",
+      "type": "remind",
+      "time": "2026-04-02T17:00:19.938776"
+    },
+    {
+      "task": "generate_remind",
+      "type": "remind",
+      "time": "2026-04-03T09:00:59.680151"
+    },
+    {
+      "task": "review_remind",
+      "type": "remind",
+      "time": "2026-04-03T14:00:01.167675"
+    },
+    {
+      "task": "deploy_remind",
+      "type": "remind",
+      "time": "2026-04-03T17:00:01.792284"
+    },
+    {
+      "task": "performance_collect",
+      "type": "auto_run",
+      "time": "2026-04-03T17:00:01.792284"
+    },
+    {
+      "task": "weekly_report",
+      "type": "auto_run",
+      "time": "2026-04-03T18:00:02.006031"
+    },
+    {
+      "task": "generate_remind",
+      "type": "remind",
+      "time": "2026-04-04T09:00:04.833120"
+    },
+    {
+      "task": "review_remind",
+      "type": "remind",
+      "time": "2026-04-04T14:00:11.025533"
+    },
+    {
+      "task": "deploy_remind",
+      "type": "remind",
+      "time": "2026-04-04T17:00:11.568471"
+    },
+    {
+      "task": "generate_remind",
+      "type": "remind",
+      "time": "2026-04-07T09:00:08.327950"
+    },
+    {
+      "task": "review_remind",
+      "type": "remind",
+      "time": "2026-04-07T14:00:10.120098"
+    }
+  ]
+}

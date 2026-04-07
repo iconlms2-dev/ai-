@@ -1,0 +1,277 @@
+{
+  "jobs": [
+    {
+      "job_id": "shorts-20260406-200444",
+      "channel": "shorts",
+      "status": "approved",
+      "current_step": 5,
+      "dedup_key": "shorts:루테인영양제:20260406",
+      "steps": [
+        {
+          "step": 1,
+          "name": "주제생성",
+          "status": "완료"
+        },
+        {
+          "step": 2,
+          "name": "대본생성",
+          "status": "완료"
+        },
+        {
+          "step": 3,
+          "name": "규칙검수",
+          "status": "PASS"
+        },
+        {
+          "step": 4,
+          "name": "훅생성",
+          "status": "완료"
+        }
+      ],
+      "revision_count": 0,
+      "approval_status": "auto",
+      "manual_version": "shorts-v1",
+      "prompt_version": "2026-04-06",
+      "char_count": 520,
+      "created_at": "2026-04-06T20:04:45.000045"
+    },
+    {
+      "job_id": "shorts-20260406-200759",
+      "channel": "shorts",
+      "status": "approved",
+      "topic": "회사 프레젠테이션에서 PPT 글씨가 안 보여 망신당한 썰",
+      "dedup_key": "shorts:루테인 영양제:20260406",
+      "revision_count": 0,
+      "char_count": 520,
+      "hook_count": 10,
+      "manual_version": "shorts-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:07:59.148600"
+    },
+    {
+      "job_id": "blog-20260406-201739",
+      "channel": "blog",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "title": "",
+      "dedup_key": "blog:루테인 효과:20260406",
+      "revision_count": 4,
+      "char_count": 0,
+      "keyword_count": 0,
+      "manual_version": "blog-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:17:39.385705"
+    },
+    {
+      "job_id": "blog-20260406-202238",
+      "channel": "blog",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "title": "루테인 효과 한 달 먹어보니 진짜 달라지네요",
+      "dedup_key": "blog:루테인 효과:20260406",
+      "revision_count": 4,
+      "char_count": 1980,
+      "keyword_count": 3,
+      "manual_version": "blog-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:22:38.030382"
+    },
+    {
+      "job_id": "jisikin-20260406-202250",
+      "channel": "jisikin",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "q_title": "루테인 효과 있나요 눈이 너무 피곤해요",
+      "dedup_key": "jisikin:루테인 효과:20260406",
+      "revision_count": 0,
+      "answer1_len": 503,
+      "answer2_len": 507,
+      "manual_version": "jisikin-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:22:50.971579"
+    },
+    {
+      "job_id": "cafe-seo-20260406-202317",
+      "channel": "cafe_seo",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "title": "루테인 권장량 지키며 먹는데 눈 건강에 도움될까요?",
+      "dedup_key": "cafe_seo:루테인 효과:20260406",
+      "revision_count": 0,
+      "char_count": 1413,
+      "keyword_count": 4,
+      "comment_count": 10,
+      "manual_version": "cafe-seo-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:23:17.624088"
+    },
+    {
+      "job_id": "cafe-viral-20260406-202437",
+      "channel": "cafe_viral",
+      "status": "approved",
+      "category": "30대 여성",
+      "target": "30대 직장인 여성",
+      "concern": "만성피로",
+      "product_name": "루테인 영양제",
+      "dedup_key": "cafe_viral:루테인 영양제:20260406",
+      "revision_count": 4,
+      "stage1_chars": 219,
+      "stage2_chars": 245,
+      "stage3_chars": 603,
+      "manual_version": "cafe-viral-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:24:37.107530"
+    },
+    {
+      "job_id": "cafe-viral-20260406-202542",
+      "channel": "cafe_viral",
+      "status": "approved",
+      "category": "30대 여성",
+      "target": "30대 직장인 여성",
+      "concern": "만성피로",
+      "product_name": "루테인 영양제",
+      "dedup_key": "cafe_viral:루테인 영양제:20260406",
+      "revision_count": 0,
+      "stage1_chars": 214,
+      "stage2_chars": 371,
+      "stage3_chars": 551,
+      "manual_version": "cafe-viral-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:25:42.931217"
+    },
+    {
+      "job_id": "blog-20260406-202551",
+      "channel": "blog",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "title": "루테인 효과 한 달 복용 후기, 정말 달라진 게 느껴져요",
+      "dedup_key": "blog:루테인 효과:20260406",
+      "revision_count": 4,
+      "char_count": 2241,
+      "keyword_count": 4,
+      "manual_version": "blog-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:25:51.816159"
+    },
+    {
+      "job_id": "tiktok-20260406-202912",
+      "channel": "tiktok",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "dedup_key": "tiktok:루테인 효과:20260406",
+      "revision_count": 4,
+      "char_count": 495,
+      "manual_version": "tiktok-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:29:12.561254"
+    },
+    {
+      "job_id": "community-20260406-202951",
+      "channel": "community",
+      "status": "approved",
+      "community": "뽐뿌",
+      "strategy": "1",
+      "keyword": "루테인 효과",
+      "dedup_key": "community:뽐뿌:루테인 효과:20260406",
+      "revision_count": 0,
+      "post_char_count": 523,
+      "comment_count": 4,
+      "manual_version": "community-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:29:51.360595"
+    },
+    {
+      "job_id": "tiktok-20260406-202956",
+      "channel": "tiktok",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "dedup_key": "tiktok:루테인 효과:20260406",
+      "revision_count": 0,
+      "char_count": 476,
+      "manual_version": "tiktok-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:29:56.346540"
+    },
+    {
+      "job_id": "youtube-20260406-203215",
+      "channel": "youtube",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "brand_keyword": "아이클리어",
+      "dedup_key": "youtube:루테인 효과:20260406",
+      "revision_count": 4,
+      "video_count": 3,
+      "comment_count": 9,
+      "manual_version": "youtube-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:32:15.784722"
+    },
+    {
+      "job_id": "threads-20260406-203439",
+      "channel": "threads",
+      "type": "traffic",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "dedup_key": "threads:루테인 효과:20260406",
+      "revision_count": 0,
+      "char_count": 135,
+      "manual_version": "threads-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:34:39.968898"
+    },
+    {
+      "job_id": "youtube-20260406-203623",
+      "channel": "youtube",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "brand_keyword": "아이클리어",
+      "dedup_key": "youtube:루테인 효과:20260406",
+      "revision_count": 4,
+      "video_count": 3,
+      "comment_count": 9,
+      "manual_version": "youtube-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:36:23.267164"
+    },
+    {
+      "job_id": "powercontent-20260406-204519",
+      "channel": "powercontent",
+      "status": "approved",
+      "keyword": "루테인 효과",
+      "ad_title": "루테인 효과 없다는 사람들의 치명적 실수",
+      "ad_desc": "마리골드 추출 루테인 20mg + 지아잔틴 황금비율로 선명한 시야 회복! 눈 건강 전문가들이 인정한 성분 조합의 비밀을 지금 확인하세요.",
+      "dedup_key": "powercontent:루테인 효과:20260406",
+      "revision_count": 4,
+      "char_count": 2976,
+      "keyword_count": 3,
+      "manual_version": "powercontent-v1",
+      "prompt_version": "2026-04-06",
+      "created_at": "2026-04-06T20:45:19.287927"
+    }
+  ],
+  "state_transitions": {
+    "allowed": {
+      "draft": [
+        "under_review"
+      ],
+      "under_review": [
+        "revision",
+        "approved"
+      ],
+      "revision": [
+        "under_review"
+      ],
+      "approved": [
+        "publish_ready"
+      ],
+      "publish_ready": [
+        "published"
+      ]
+    },
+    "rules": {
+      "max_revisions": 3,
+      "max_strategy_rollbacks": 1,
+      "approval_required_before": "publish_ready"
+    }
+  }
+}

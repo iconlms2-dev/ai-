@@ -1,0 +1,411 @@
+# 코드 리뷰 요청: Threads 자동화 — 파트1 (백엔드 핵심)
+
+리뷰 포인트: 동시성, OAuth 보안, 크롤링 안정성, 스케줄러, 토큰 갱신
+
+---
+
+# ═══════════════════════════ THREADS (쓰레드) ═══════════════════════════
+
+import threading as _threading
+import random as _random
+
+_threads_lock = _threading.Lock()
+_threads_scheduler_running = False
+
+def _threads_load_accounts():
+    if os.path.exists(THREADS_ACCOUNTS_FILE):
+        with open(THREADS_ACCOUNTS_FILE, 'r') as f:
+            return json.load(f)
+    return {'accounts': []}
+
+def _threads_save_accounts(data):
+    with _threads_lock:
+        with open(THREADS_ACCOUNTS_FILE, 'w') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _threads_load_queue():
+    if os.path.exists(THREADS_QUEUE_FILE):
+        with open(THREADS_QUEUE_FILE, 'r') as f:
+            return json.load(f)
+    return {'queue': []}
+
+def _threads_save_queue(data):
+    with _threads_lock:
+        with open(THREADS_QUEUE_FILE, 'w') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _threads_api(access_token, endpoint, method='GET', data=None):
+    """Threads Graph API 래퍼"""
+    base = 'https://graph.threads.net/v1.0'
+    url = f'{base}/{endpoint}'
+    headers = {'Authorization': f'Bearer {access_token}'}
+    try:
+        if method == 'GET':
+            r = req.get(url, headers=headers, params=data, timeout=15)
+        else:
+            r = req.post(url, headers=headers, json=data, timeout=15)
+        if r.status_code == 200:
+            return {'ok': True, 'data': r.json()}
+        return {'ok': False, 'error': r.text[:300], 'status': r.status_code}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+# ────── 계정 관리 ──────
+
+@app.get("/api/threads/accounts")
+async def threads_accounts_list():
+    data = _threads_load_accounts()
+    safe = []
+    for acc in data.get('accounts', []):
+        safe.append({
+            'id': acc['id'],
+            'role': acc.get('role', 'support'),
+            'persona': acc.get('persona', {}),
+            'reference_accounts': acc.get('reference_accounts', []),
+            'schedule': acc.get('schedule', {}),
+            'connected': bool(acc.get('token', {}).get('access_token')),
+            'username': acc.get('username', ''),
+            'token_expires': acc.get('token', {}).get('expires_at', ''),
+            'daily_count': acc.get('daily_count', 0),
+        })
+    return {'accounts': safe}
+
+@app.post("/api/threads/accounts")
+async def threads_accounts_add(request: Request):
+    body = await request.json()
+    data = _threads_load_accounts()
+    acc_id = 'threads_' + str(uuid.uuid4())[:8]
+    account = {
+        'id': acc_id,
+        'role': body.get('role', 'support'),
+        'token': {},
+        'username': '',
+        'persona': body.get('persona', {'name': '', 'age': '', 'job': '', 'tone': '친근', 'interests': []}),
+        'reference_accounts': body.get('reference_accounts', []),
+        'schedule': body.get('schedule', {'daily_posts': 2, 'active_hours': [9, 22], 'min_interval_hours': 4}),
+        'daily_count': 0,
+        'daily_count_date': datetime.now().strftime('%Y-%m-%d'),
+    }
+    data['accounts'].append(account)
+    _threads_save_accounts(data)
+    return {'ok': True, 'id': acc_id}
+
+@app.put("/api/threads/accounts/{acc_id}")
+async def threads_accounts_update(acc_id: str, request: Request):
+    body = await request.json()
+    data = _threads_load_accounts()
+    for acc in data['accounts']:
+        if acc['id'] == acc_id:
+            if 'persona' in body:
+                acc['persona'] = body['persona']
+            if 'role' in body:
+                acc['role'] = body['role']
+            if 'reference_accounts' in body:
+                acc['reference_accounts'] = body['reference_accounts']
+            if 'schedule' in body:
+                acc['schedule'] = body['schedule']
+            _threads_save_accounts(data)
+            return {'ok': True}
+    return JSONResponse({'ok': False, 'error': '계정 없음'}, 404)
+
+@app.delete("/api/threads/accounts/{acc_id}")
+async def threads_accounts_delete(acc_id: str):
+    data = _threads_load_accounts()
+    data['accounts'] = [a for a in data['accounts'] if a['id'] != acc_id]
+    _threads_save_accounts(data)
+    return {'ok': True}
+
+# ────── OAuth ──────
+
+@app.get("/api/threads/auth-url")
+async def threads_auth_url(account_id: str = ''):
+    if not THREADS_APP_ID:
+        return JSONResponse({'error': 'THREADS_APP_ID 미설정'}, 400)
+    redirect_uri = 'http://localhost:8000/api/threads/callback'
+    scope = 'threads_basic,threads_content_publish,threads_manage_insights,threads_manage_replies'
+    state = account_id or 'default'
+    url = (f'https://threads.net/oauth/authorize?client_id={THREADS_APP_ID}'
+           f'&redirect_uri={quote(redirect_uri)}&scope={scope}'
+           f'&response_type=code&state={state}')
+    return {'url': url}
+
+@app.get("/api/threads/callback")
+async def threads_callback(code: str = '', state: str = ''):
+    if not code:
+        return JSONResponse({'error': 'code 없음'}, 400)
+    redirect_uri = 'http://localhost:8000/api/threads/callback'
+    # 1단계: 단기 토큰 발급
+    try:
+        r = req.post('https://graph.threads.net/oauth/access_token', data={
+            'client_id': THREADS_APP_ID,
+            'client_secret': THREADS_APP_SECRET,
+            'grant_type': 'authorization_code',
+            'redirect_uri': redirect_uri,
+            'code': code,
+        }, timeout=15)
+        if r.status_code != 200:
+            return JSONResponse({'error': f'토큰 발급 실패: {r.text[:300]}'}, 400)
+        short_token = r.json()
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, 500)
+
+    # 2단계: 장기 토큰 교환 (60일)
+    try:
+        r2 = req.get('https://graph.threads.net/access_token', params={
+            'grant_type': 'th_exchange_token',
+            'client_secret': THREADS_APP_SECRET,
+            'access_token': short_token.get('access_token', ''),
+        }, timeout=15)
+        if r2.status_code == 200:
+            long_token = r2.json()
+            access_token = long_token.get('access_token', short_token.get('access_token', ''))
+            expires_in = long_token.get('expires_in', 5184000)
+        else:
+            access_token = short_token.get('access_token', '')
+            expires_in = 3600
+    except Exception:
+        access_token = short_token.get('access_token', '')
+        expires_in = 3600
+
+    expires_at = (datetime.now() + timedelta(seconds=expires_in)).isoformat()
+    user_id = short_token.get('user_id', '')
+
+    # 사용자 이름 가져오기
+    username = ''
+    if access_token:
+        me = _threads_api(access_token, 'me', data={'fields': 'id,username'})
+        if me.get('ok'):
+            username = me['data'].get('username', '')
+            user_id = me['data'].get('id', user_id)
+
+    # 계정에 토큰 저장
+    data = _threads_load_accounts()
+    acc_id = state if state != 'default' else None
+    found = False
+    for acc in data['accounts']:
+        if acc['id'] == acc_id:
+            acc['token'] = {'access_token': access_token, 'expires_at': expires_at, 'user_id': user_id}
+            acc['username'] = username
+            found = True
+            break
+    if not found and data['accounts']:
+        # state 매칭 안되면 첫 미연결 계정에 저장
+        for acc in data['accounts']:
+            if not acc.get('token', {}).get('access_token'):
+                acc['token'] = {'access_token': access_token, 'expires_at': expires_at, 'user_id': user_id}
+                acc['username'] = username
+                found = True
+                break
+    if not found:
+        # 계정이 아예 없으면 자동 생성
+        new_id = 'threads_' + str(uuid.uuid4())[:8]
+        data['accounts'].append({
+            'id': new_id, 'role': 'main', 'token': {'access_token': access_token, 'expires_at': expires_at, 'user_id': user_id},
+            'username': username, 'persona': {'name': '', 'age': '', 'job': '', 'tone': '친근', 'interests': []},
+            'reference_accounts': [], 'schedule': {'daily_posts': 3, 'active_hours': [9, 22], 'min_interval_hours': 3},
+            'daily_count': 0, 'daily_count_date': datetime.now().strftime('%Y-%m-%d'),
+        })
+    _threads_save_accounts(data)
+    # 대시보드로 리다이렉트
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url='http://localhost:8000/?menu=threads&auth=ok')
+
+@app.get("/api/threads/status")
+async def threads_status():
+    data = _threads_load_accounts()
+    statuses = []
+    now = datetime.now()
+    for acc in data.get('accounts', []):
+        token = acc.get('token', {})
+        connected = bool(token.get('access_token'))
+        expires_at = token.get('expires_at', '')
+        days_left = -1
+        warning = False
+        if expires_at:
+            try:
+                exp = datetime.fromisoformat(expires_at)
+                days_left = (exp - now).days
+                warning = days_left <= 7
+            except Exception:
+                pass
+        statuses.append({
+            'id': acc['id'], 'username': acc.get('username', ''),
+            'connected': connected, 'days_left': days_left, 'warning': warning,
+        })
+    return {'statuses': statuses}
+
+# ────── 참조계정 크롤링 ──────
+
+_threads_crawl_semaphore = asyncio.Semaphore(1)
+
+def _threads_crawl_account(username):
+    """Playwright로 Threads 참조계정 최근 글 크롤링"""
+    posts = []
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            ctx = browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 430, 'height': 932},
+                locale='ko-KR',
+            )
+            page = ctx.new_page()
+            clean_name = username.lstrip('@')
+            page.goto(f'https://www.threads.net/@{clean_name}', timeout=20000)
+            page.wait_for_timeout(3000)
+            # 스크롤해서 포스트 로드
+            for _ in range(3):
+                page.evaluate('window.scrollBy(0, 800)')
+                page.wait_for_timeout(1500)
+            # 포스트 텍스트 수집
+            elements = page.query_selector_all('[data-pressable-container="true"]')
+            for el in elements[:10]:
+                text = el.inner_text().strip()
+                if text and len(text) > 10:
+                    lines = text.split('\n')
+                    content = '\n'.join([l for l in lines if l.strip() and not l.strip().startswith('좋아요') and not l.strip().endswith('전')])
+                    if content and len(content) > 10:
+                        posts.append({'text': content[:500], 'length': len(content)})
+            browser.close()
+    except Exception as e:
+        print(f"[threads_crawl] 에러: {e}")
+    return posts
+
+@app.post("/api/threads/crawl-reference")
+async def threads_crawl_reference(request: Request):
+    body = await request.json()
+    account_id = body.get('account_id', '')
+    data = _threads_load_accounts()
+    acc = next((a for a in data['accounts'] if a['id'] == account_id), None)
+    if not acc:
+        return JSONResponse({'error': '계정 없음'}, 404)
+    ref_accounts = acc.get('reference_accounts', [])
+    if not ref_accounts:
+        return JSONResponse({'error': '참조계정 미등록'}, 400)
+
+
+
+# --- 토큰 갱신 + 스케줄러 ---
+
+def _threads_refresh_token(acc):
+    """만료 15일 전 장기 토큰 자동 갱신"""
+    token = acc.get('token', {})
+    access_token = token.get('access_token', '')
+    expires_at = token.get('expires_at', '')
+    if not access_token or not expires_at:
+        return False
+    try:
+        exp = datetime.fromisoformat(expires_at)
+        days_left = (exp - datetime.now()).days
+        if days_left > 15:
+            return False  # 아직 갱신 불필요
+        # 장기 토큰 갱신 API 호출
+        r = req.get('https://graph.threads.net/refresh_access_token', params={
+            'grant_type': 'th_refresh_token',
+            'access_token': access_token,
+        }, timeout=15)
+        if r.status_code == 200:
+            new_data = r.json()
+            acc['token']['access_token'] = new_data.get('access_token', access_token)
+            new_expires = new_data.get('expires_in', 5184000)
+            acc['token']['expires_at'] = (datetime.now() + timedelta(seconds=new_expires)).isoformat()
+            print(f"[threads] 토큰 갱신 완료: {acc.get('username','')} (새 만료: {acc['token']['expires_at']})")
+            return True
+        else:
+            print(f"[threads] 토큰 갱신 실패: {r.status_code} {r.text[:200]}")
+            return False
+    except Exception as e:
+        print(f"[threads] 토큰 갱신 에러: {e}")
+        return False
+
+async def _threads_scheduler_loop():
+    """백그라운드 스케줄러: 1분마다 큐 확인 → 조건 맞으면 자동 게시 + 토큰 갱신"""
+    global _threads_scheduler_running
+    _threads_scheduler_running = True
+    _token_check_counter = 0
+    while _threads_scheduler_running:
+        try:
+            await asyncio.sleep(60)
+            now = datetime.now()
+            hour = now.hour
+            queue = _threads_load_queue()
+            accounts_data = _threads_load_accounts()
+
+            # 토큰 갱신 체크 (60분마다 1회)
+            _token_check_counter += 1
+            if _token_check_counter >= 60:
+                _token_check_counter = 0
+                loop = asyncio.get_event_loop()
+                token_changed = False
+                for acc in accounts_data.get('accounts', []):
+                    if acc.get('token', {}).get('access_token'):
+                        refreshed = await loop.run_in_executor(executor, _threads_refresh_token, acc)
+                        if refreshed:
+                            token_changed = True
+                if token_changed:
+                    _threads_save_accounts(accounts_data)
+            changed = False
+
+            for item in queue.get('queue', []):
+                if item['status'] != 'pending':
+                    continue
+                acc_id = item['account_id']
+                acc = next((a for a in accounts_data['accounts'] if a['id'] == acc_id), None)
+                if not acc or not acc.get('token', {}).get('access_token'):
+                    continue
+                schedule = acc.get('schedule', {})
+                active_start, active_end = schedule.get('active_hours', [9, 22])
+                daily_max = schedule.get('daily_posts', 3)
+                min_interval = schedule.get('min_interval_hours', 3)
+
+                # 활동 시간대 체크
+                if hour < active_start or hour >= active_end:
+                    continue
+                # 일일 한도 체크
+                today = now.strftime('%Y-%m-%d')
+                if acc.get('daily_count_date') != today:
+                    acc['daily_count'] = 0
+                    acc['daily_count_date'] = today
+                if acc.get('daily_count', 0) >= daily_max:
+                    continue
+                # 최소 간격 체크 (마지막 게시 시간)
+                last_pub = acc.get('last_publish_time', '')
+                if last_pub:
+                    try:
+                        last_dt = datetime.fromisoformat(last_pub)
+                        elapsed = (now - last_dt).total_seconds() / 3600
+                        # 랜덤 지터 추가 (봇 탐지 방지)
+                        jitter = _random.uniform(0, 0.5)
+                        if elapsed < min_interval + jitter:
+                            continue
+                    except Exception:
+                        pass
+
+                # 게시 실행
+                token = acc['token']['access_token']
+                user_id = acc['token'].get('user_id', 'me')
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(executor, _threads_publish_post, token, user_id, item['text'])
+                if result.get('ok'):
+                    item['status'] = 'published'
+                    item['published_at'] = now.isoformat()
+                    item['post_id'] = result.get('data', {}).get('id', '')
+                    acc['daily_count'] = acc.get('daily_count', 0) + 1
+                    acc['last_publish_time'] = now.isoformat()
+                    changed = True
+                    print(f"[threads_scheduler] 게시 완료: {acc.get('username','')} - {item['text'][:30]}...")
+                else:
+                    item['status'] = 'failed'
+                    item['error'] = result.get('error', '')[:200]
+                    changed = True
+
+            if changed:
+                _threads_save_queue(queue)
+                _threads_save_accounts(accounts_data)
+        except Exception as e:
+            print(f"[threads_scheduler] 루프 에러: {e}")
+
+@app.on_event("startup")
+async def _start_threads_scheduler():  # noqa: deprecation — lifespan 전환은 별도 리팩터링
+    asyncio.create_task(_threads_scheduler_loop())

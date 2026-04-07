@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프롬프트 테스트</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f5f6fa; color:#1a1a2e; min-height:100vh; }
+.container { max-width:1200px; margin:0 auto; padding:20px; display:grid; grid-template-columns:1fr 1fr; gap:20px; height:calc(100vh - 40px); }
+.panel { background:#fff; border:1px solid #e2e4ea; border-radius:12px; padding:20px; overflow-y:auto; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+h1 { font-size:18px; margin-bottom:16px; color:#4a5abb; }
+h2 { font-size:14px; margin-bottom:10px; color:#6b7280; }
+.channel-grid { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+.channel-btn { padding:6px 14px; border:1px solid #e2e4ea; border-radius:6px; background:#fff; color:#6b7280; cursor:pointer; font-size:12px; transition:all .2s; }
+.channel-btn:hover { border-color:#4a5abb; color:#1a1a2e; }
+.channel-btn.active { background:#4a5abb; color:#fff; border-color:#4a5abb; }
+textarea { width:100%; background:#f9fafb; border:1px solid #e2e4ea; border-radius:8px; color:#1a1a2e; padding:12px; font-family:'Fira Code',monospace; font-size:12px; line-height:1.6; resize:vertical; }
+textarea:focus { outline:none; border-color:#4a5abb; box-shadow:0 0 0 3px rgba(74,90,187,.1); }
+input { background:#f9fafb; border:1px solid #e2e4ea; border-radius:6px; color:#1a1a2e; padding:8px 12px; font-size:13px; width:100%; }
+input:focus { outline:none; border-color:#4a5abb; box-shadow:0 0 0 3px rgba(74,90,187,.1); }
+.input-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.btn { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500; transition:all .2s; }
+.btn-primary { background:#4a5abb; color:#fff; }
+.btn-primary:hover { background:#3d4ea6; }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+.btn-green { background:#16a34a; color:#fff; }
+.btn-green:hover { background:#15803d; }
+.btn-outline { background:transparent; border:1px solid #e2e4ea; color:#6b7280; }
+.btn-outline:hover { border-color:#4a5abb; color:#1a1a2e; }
+.btn-red { background:transparent; border:1px solid #ef4444; color:#ef4444; }
+.btn-red:hover { background:#ef4444; color:#fff; }
+.btn-group { display:flex; gap:8px; margin-top:12px; }
+.badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; }
+.badge-warn { background:#f59e0b; color:#fff; }
+.badge-ok { background:#16a34a; color:#fff; }
+.result-box { background:#f9fafb; border:1px solid #e2e4ea; border-radius:8px; padding:16px; white-space:pre-wrap; font-size:13px; line-height:1.7; max-height:100%; overflow-y:auto; }
+.meta { font-size:11px; color:#9ca3af; margin-top:8px; }
+.status { font-size:12px; color:#9ca3af; margin-bottom:8px; }
+.toast { position:fixed; bottom:20px; right:20px; background:#16a34a; color:#fff; padding:10px 20px; border-radius:8px; font-size:13px; z-index:9999; animation:fadeIn .3s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+label { font-size:11px; color:#9ca3af; margin-bottom:4px; display:block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 왼쪽: 프롬프트 편집 -->
+  <div class="panel">
+    <h1>🧪 프롬프트 테스트</h1>
+
+    <h2>채널 선택</h2>
+    <div class="channel-grid" id="channelBtns"></div>
+
+    <div id="editorArea" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h2 style="margin:0;">시스템 프롬프트 <span id="overrideBadge" class="badge badge-warn" style="display:none;">커스텀</span></h2>
+        <span id="charCount" style="font-size:11px;color:#71717a;"></span>
+      </div>
+      <textarea id="promptText" rows="20"></textarea>
+
+      <h2 style="margin-top:16px;">테스트 입력</h2>
+      <div class="input-grid">
+        <div><label>키워드</label><input id="inKeyword" value="전립선 영양제"></div>
+        <div><label>제품명</label><input id="inName"></div>
+        <div><label>나만의 키워드</label><input id="inBrand"></div>
+        <div><label>핵심 특징</label><input id="inUsp"></div>
+        <div><label>타겟층</label><input id="inTarget"></div>
+        <div><label>주요 성분</label><input id="inIngr"></div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="generate()" id="genBtn">생성</button>
+        <button class="btn btn-outline" onclick="resetPrompt()">원본 복원</button>
+        <button class="btn btn-green" onclick="savePrompt()">저장 (실제 적용)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 오른쪽: 결과 -->
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h1 style="margin:0;">결과</h1>
+      <span id="resultMeta" class="meta"></span>
+    </div>
+    <div id="resultArea" class="result-box" style="height:calc(100% - 50px);">
+      <span style="color:#71717a;">채널을 선택하고 "생성"을 누르세요.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentChannel = '';
+let originalPrompt = '';
+
+// 제품 정보 로드
+const prod = JSON.parse(localStorage.getItem('blogProduct') || '{}');
+if (prod.name) document.getElementById('inName').value = prod.name;
+if (prod.brand_keyword) document.getElementById('inBrand').value = prod.brand_keyword;
+if (prod.usp) document.getElementById('inUsp').value = prod.usp;
+if (prod.target) document.getElementById('inTarget').value = prod.target;
+if (prod.ingredients) document.getElementById('inIngr').value = prod.ingredients;
+
+// 채널 로드
+const labels = {
+  '블로그_제목':'📝 블로그 제목','블로그_본문':'📝 블로그 본문','카페SEO_제목':'☕ 카페 제목','카페SEO_본문':'☕ 카페 본문','카페SEO_댓글':'☕ 카페 댓글',
+  '지식인_질문제목':'❓ 질문제목','지식인_질문본문':'❓ 질문본문','지식인_답변':'❓ 답변',
+  '틱톡':'🎵 틱톡','커뮤니티':'💬 커뮤니티',
+  '쓰레드_일상글':'🧵 일상글','쓰레드_물길글_셔플':'🧵 셔플','쓰레드_물길글_연민':'🧵 연민','쓰레드_물길글_후기':'🧵 후기'
+};
+
+fetch('/api/prompt-test/channels').then(r=>r.json()).then(d => {
+  document.getElementById('channelBtns').innerHTML = (d.channels||[]).map(ch =>
+    `<button class="channel-btn" onclick="selectChannel('${ch}')">${labels[ch]||ch}</button>`
+  ).join('');
+});
+
+async function selectChannel(ch) {
+  currentChannel = ch;
+  document.querySelectorAll('.channel-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === (labels[ch]||ch));
+  });
+  const r = await fetch('/api/prompt-test/get?channel=' + encodeURIComponent(ch));
+  const d = await r.json();
+  document.getElementById('promptText').value = d.prompt || '';
+  originalPrompt = d.prompt || '';
+  document.getElementById('overrideBadge').style.display = d.is_override ? '' : 'none';
+  document.getElementById('charCount').textContent = (d.prompt||'').length + '자';
+  document.getElementById('editorArea').style.display = '';
+  document.getElementById('resultArea').innerHTML = '<span style="color:#71717a;">"생성" 버튼을 누르세요.</span>';
+  document.getElementById('resultMeta').textContent = '';
+}
+
+async function generate() {
+  const prompt = document.getElementById('promptText').value;
+  if (!prompt) return;
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true; btn.textContent = '생성 중...';
+  document.getElementById('resultArea').innerHTML = '<span style="color:#71717a;">Claude API 호출 중...</span>';
+  const start = Date.now();
+  try {
+    const r = await fetch('/api/prompt-test/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        system_prompt: prompt,
+        keyword: document.getElementById('inKeyword').value,
+        product: {
+          name: document.getElementById('inName').value,
+          brand_keyword: document.getElementById('inBrand').value,
+          usp: document.getElementById('inUsp').value,
+          target: document.getElementById('inTarget').value,
+          ingredients: document.getElementById('inIngr').value,
+        },
+        temperature: 0.7
+      })
+    });
+    const d = await r.json();
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    document.getElementById('resultArea').textContent = d.result || d.error || '';
+    document.getElementById('resultMeta').textContent = `${d.char_count||0}자 | ${elapsed}초`;
+  } catch(e) {
+    document.getElementById('resultArea').textContent = '에러: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '생성';
+}
+
+async function savePrompt() {
+  if (!currentChannel) return;
+  if (!confirm(`"${currentChannel}" 프롬프트를 저장하시겠습니까?\n실제 콘텐츠 생성에 적용됩니다.`)) return;
+  await fetch('/api/prompt-test/save', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ channel: currentChannel, prompt: document.getElementById('promptText').value })
+  });
+  document.getElementById('overrideBadge').style.display = '';
+  toast('저장 완료 — 실제 생성에 적용됩니다');
+}
+
+async function resetPrompt() {
+  if (!currentChannel) return;
+  if (!confirm('원본 프롬프트로 복원하시겠습니까?')) return;
+  await fetch('/api/prompt-test/reset', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ channel: currentChannel })
+  });
+  document.getElementById('overrideBadge').style.display = 'none';
+  selectChannel(currentChannel);
+  toast('원본 복원 완료');
+}
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+document.getElementById('promptText').addEventListener('input', e => {
+  document.getElementById('charCount').textContent = e.target.value.length + '자';
+});
+</script>
+</body>
+</html>

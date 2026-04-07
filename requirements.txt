@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+selenium
+webdriver-manager
+beautifulsoup4
+requests
+openpyxl
+python-multipart
+python-dotenv
+playwright
+playwright-stealth
+yt-dlp
+slack-bolt
+slack-sdk
+apscheduler

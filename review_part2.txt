@@ -1,0 +1,482 @@
+# 코드 리뷰 요청: Threads 자동화 — 파트2 (프롬프트 + 생성)
+
+리뷰 포인트: 3가지 SL 프롬프트 품질, 어그로 패턴, SSE ClientDisconnect, 글 톤
+
+---
+
+    async with _threads_crawl_semaphore:
+        loop = asyncio.get_event_loop()
+        all_posts = []
+        for ref in ref_accounts[:3]:
+            if await request.is_disconnected():
+                print("[threads_crawl] 클라이언트 연결 끊김, 크롤링 중단")
+                break
+            posts = await loop.run_in_executor(executor, _threads_crawl_account, ref)
+            all_posts.extend([{**p, 'source': ref} for p in posts])
+    return {'posts': all_posts, 'count': len(all_posts)}
+
+# ────── 프롬프트 ──────
+
+def _build_threads_daily_prompt(persona, ref_posts):
+    """일상글 프롬프트 — 참조계정 스타일 카피"""
+    persona_desc = f"이름: {persona.get('name','')}, 나이: {persona.get('age','')}, 직업: {persona.get('job','')}"
+    interests = ', '.join(persona.get('interests', []))
+    tone = persona.get('tone', '친근')
+
+    ref_examples = ''
+    if ref_posts:
+        ref_examples = '참조 계정 글 예시:\n'
+        for i, p in enumerate(ref_posts[:5], 1):
+            ref_examples += f'---예시 {i}---\n{p["text"][:200]}\n'
+
+    system = f"""역할: Threads(쓰레드)에서 자연스러운 일상글을 작성하는 SNS 사용자.
+
+페르소나:
+{persona_desc}
+관심사: {interests}
+말투: {tone}
+
+목표: 참조 계정의 글 스타일(주제 선택, 문장 길이, 톤)을 분석하고, 이 페르소나의 말투로 변환하여 Threads에 맞는 일상글을 작성한다.
+
+{ref_examples}
+
+Threads 플랫폼 특성 (반드시 반영):
+- 트위터와 비슷한 짧은 텍스트 중심 플랫폼
+- 1~3문장 단문이 대세. 길어도 5문장 이내
+- 줄임말, 구어체, 혼잣말 톤이 자연스러움 ("ㄹㅇ", "진짜", "아 맞다", "근데")
+- 완결된 글보다 생각을 툭 던지는 느낌
+- 이모티콘은 0~1개 (과하면 봇 느낌)
+- 해시태그는 거의 안 씀 (쓰더라도 1개, 안 써도 됨)
+- 블로그/카페처럼 정리된 글 금지 — 머릿속 생각을 그대로 옮긴 느낌
+
+작성 규칙:
+1. 참조 계정의 주제/감성을 따라하되, 말투는 페르소나에 맞게
+2. 200자 이내 권장 (최대 500자)
+3. 제품·브랜드·광고 언급 절대 금지
+4. 문장 끝을 다양하게 ("~인 듯", "~하다가", "~했는데", "~임", "~ㅋㅋ")
+5. 줄바꿈 적극 활용 (한 문장씩 끊기)
+
+출력 형식:
+[포스트]
+(본문)
+
+[해시태그]
+(해시태그 또는 '없음')"""
+
+    user = f"위 참조 계정의 스타일을 분석해서, 페르소나({persona.get('name','')})의 말투로 일상글 1개를 작성해주세요."
+    return system, user
+
+def _build_threads_traffic_prompt(keyword, persona, product, forbidden='', selling_logic='shuffle'):
+    """물길글 프롬프트 — 3가지 SL(셀링 로직) 지원"""
+    brand_kw = product.get('brand_keyword', '')
+    tone = persona.get('tone', '친근')
+    persona_job = persona.get('job', '')
+    persona_interests = ', '.join(persona.get('interests', []))
+
+    threads_base = f"""Threads 플랫폼 특성 (반드시 반영):
+- 짧은 텍스트 중심. 1~5문장.
+- 줄임말, 구어체 자연스러움
+- 줄바꿈으로 문장 끊기
+- 이모티콘 0~1개, 해시태그 0~1개
+- 정리된 글 금지 — 생각을 툭 던지는 느낌
+
+★ 첫 줄 어그로 필수:
+첫 문장에서 반드시 스크롤을 멈추게 해야 함. 아래 패턴 중 하나 활용:
+- 부정 편향: "~하면 진짜 손해", "아직도 ~하는 사람 있음?"
+- 숫자 충격: "3년 걸림", "100만원 날렸다"
+- 권위: "N년차가 말하는데", "~해본 사람으로서"
+- 호기심: "이거 나만 알고 싶은데", "솔직히 말할게"
+- 공감: "나만 이런 거 아니지?", "다들 이거 겪어봤을 텐데"
+
+페르소나 말투: {tone}"""
+
+    if selling_logic == 'shuffle':
+        system = f"""역할: Threads에서 경험을 공유하는 일반 사용자.
+
+{threads_base}
+
+셀링 로직: 정보 셔플식
+대안들 사이에 자연스럽게 제품을 섞어 간접 노출한다.
+
+규칙:
+1. [어그로 첫 줄] → 대안 3~4개 짧게 나열 → "나는 개인적으로 ~가 맞았음"
+2. 나만의 키워드를 대안 중 하나로 자연스럽게 배치 (1회만)
+3. 비교표/번호 매기기 금지 — 대화체로 자연스럽게
+4. 200자 이내 권장 (최대 500자)
+5. 광고 어투 금지 ("강추", "인생템", "꼭 써보세요")
+6. 제품명 직접 언급 금지 (나만의 키워드만 사용)
+
+출력 형식:
+[포스트]
+(본문)
+
+[해시태그]
+(해시태그 또는 '없음')
+
+금지 키워드: {forbidden}"""
+
+    elif selling_logic == 'sympathy':
+        system = f"""역할: Threads에서 자신의 사업/제품을 직접 홍보하는 판매자.
+
+{threads_base}
+
+셀링 로직: 연민 판매자식
+불쌍한 사연을 깔고 대놓고 홍보한다. 동정심을 유발하되 진심이 느껴져야 함.
+
+구조:
+1. [어그로 첫 줄] — 충격적인 사연 한 줄 ("퇴사하고 이거 하나에 올인했는데", "3년 걸렸다 진짜로")
+2. 힘든 사연 — 창업 고생, 실패 경험, 밤새 작업, 돈 다 날림 등
+3. 이 제품을 왜 만들었는지, 얼마나 공들였는지
+4. 대놓고 홍보 — "한번만 봐주세요", "검색해봐 주세요"
+
+규칙:
+1. 제품명/나만의 키워드 직접 언급 OK (대놓고 홍보니까)
+2. 구걸 느낌 아니고 "진심을 담았다" 느낌
+3. 200자 이내 권장 (최대 500자)
+4. 줄바꿈 많이, 짧은 문장
+5. 과장된 성공 스토리 금지 — 아직 힘든 상황이어야 동정 유발
+
+출력 형식:
+[포스트]
+(본문)
+
+[해시태그]
+(해시태그 또는 '없음')
+
+금지 키워드: {forbidden}"""
+
+    else:  # review
+        system = f"""역할: Threads에서 전문가 포지션으로 후기를 공유하는 사용자.
+
+{threads_base}
+
+셀링 로직: 후기 신뢰식
+이 분야의 전문가/경험자로서 제품 후기를 담백하게 공유한다. 신뢰가 핵심.
+
+페르소나 직업: {persona_job}
+페르소나 관심 분야: {persona_interests}
+
+구조:
+1. [어그로 첫 줄] — 권위/경험 기반 ("이 업계 N년차가 말하는데", "솔직히 다 거기서 거긴데 이건 좀 달랐음")
+2. 전문가 포지셔닝 — 이 분야에서 뭘 해왔는지 간단히
+3. 비교 대상 언급 — "A도 써봤고 B도 써봤는데"
+4. 이 제품의 구체적 변화/결과 — 담백하고 건조하게
+
+규칙:
+1. 제품명/나만의 키워드 직접 언급 OK
+2. 페르소나의 직업/관심사가 전문성 근거가 되어야 함
+3. 과장 금지 — "인생이 바뀌었다" 같은 표현 금지
+4. 구체적 수치/기간 포함 ("2주 써봤는데", "확실히 달라짐")
+5. 200자 이내 권장 (최대 500자)
+
+출력 형식:
+[포스트]
+(본문)
+
+[해시태그]
+(해시태그 또는 '없음')
+
+금지 키워드: {forbidden}"""
+
+    sl_label = {'shuffle': '정보 셔플식', 'sympathy': '연민 판매자식', 'review': '후기 신뢰식'}.get(selling_logic, '정보 셔플식')
+    user = f"""메인 키워드: {keyword}
+소구점: {product.get('usp', '')}
+타겟층: {product.get('target', '')}
+나만의 키워드: {brand_kw}
+제품명: {product.get('name', '')}
+
+위 정보를 바탕으로 [{sl_label}]으로 Threads 물길글 1개를 작성해주세요."""
+    return system, user
+
+def _build_threads_comment_prompt(post_content, persona):
+    """댓글 프롬프트 — 게시물 맥락에 맞는 매력적 댓글"""
+    tone = persona.get('tone', '친근')
+    system = f"""역할: Threads에서 소통하는 일반 사용자.
+
+말투: {tone}
+
+목표: 아래 게시물에 달기 좋은 자연스러운 댓글 3개를 작성한다.
+
+Threads 댓글 특성:
+- 짧다. 한 줄이 대부분 ("ㄹㅇㅋㅋ", "이거 나도 그랬음", "오 대박")
+- 공감형, 질문형, 경험공유형을 섞되 전부 짧게
+- 이모티콘 0~1개
+- 광고·홍보 느낌 금지
+- "정보 감사합니다" 같은 정중한 톤 금지 — 친구한테 말하듯
+
+작성 규칙:
+1. 각 댓글 1문장 (30자 이내)
+2. 3개 모두 톤이 달라야 함
+3. 줄임말, 구어체 OK
+
+출력 형식:
+1. (댓글1)
+2. (댓글2)
+3. (댓글3)"""
+    user = f"게시물 내용:\n{post_content[:500]}\n\n위 게시물에 달 매력적인 댓글 3개를 작성해주세요."
+    return system, user
+
+def _parse_threads_output(raw):
+    """쓰레드 생성 결과 파싱: 포스트 본문 + 해시태그 분리"""
+    text = raw.strip()
+    hashtag = ''
+    if '[해시태그]' in text:
+        parts = text.split('[해시태그]')
+        text = parts[0].strip()
+        ht = parts[1].strip()
+        if ht and ht != '없음':
+            hashtag = ht.strip()
+    if text.startswith('[포스트]'):
+        text = text[len('[포스트]'):].strip()
+    # 해시태그가 본문 안에 있으면 분리
+    if not hashtag:
+        import re as _re
+        ht_match = _re.findall(r'#\S+', text)
+        if ht_match:
+            hashtag = ht_match[0]
+    return text, hashtag
+
+# ────── 콘텐츠 생성 ──────
+
+@app.get("/api/threads/notion-keywords")
+async def threads_notion_keywords():
+    headers = {
+        'Authorization': 'Bearer %s' % NOTION_TOKEN,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28',
+    }
+    payload = {
+        'filter': {'and': [
+            {'property': '배정 채널', 'multi_select': {'contains': '쓰레드'}},
+            {'property': '상태', 'select': {'equals': '미사용'}},
+        ]},
+        'page_size': 100,
+    }
+    try:
+        r = req.post('https://api.notion.com/v1/databases/%s/query' % KEYWORD_DB_ID, headers=headers, json=payload, timeout=15)
+        if r.status_code != 200:
+            return {'keywords': []}
+        keywords = []
+        for page in r.json().get('results', []):
+            props = page.get('properties', {})
+            t = props.get('키워드', {}).get('title', [])
+            kw = t[0]['text']['content'] if t else ''
+            if kw:
+                keywords.append({'keyword': kw, 'page_id': page['id']})
+        return {'keywords': keywords}
+    except Exception:
+        return {'keywords': []}
+
+@app.post("/api/threads/generate")
+async def threads_generate(request: Request):
+    body = await request.json()
+    post_type = body.get('type', 'daily')  # 'daily' or 'traffic'
+    account_id = body.get('account_id', '')
+    keywords = body.get('keywords', [])
+    product = body.get('product', {})
+    forbidden = body.get('forbidden', '')
+    count = body.get('count', 3)
+    ref_posts = body.get('ref_posts', [])
+    selling_logic = body.get('selling_logic', 'shuffle')  # shuffle / sympathy / review
+
+    data = _threads_load_accounts()
+    acc = next((a for a in data['accounts'] if a['id'] == account_id), None)
+    persona = acc.get('persona', {}) if acc else {'tone': '친근'}
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_event_loop()
+        if post_type == 'daily':
+            total = count
+            for idx in range(1, count + 1):
+                if await request.is_disconnected():
+                    print("[threads_generate] 클라이언트 연결 끊김, 생성 중단")
+                    return
+                yield _sse({'type': 'progress', 'msg': f'[{idx}/{total}] 일상글 생성 중...', 'cur': idx-1, 'total': total})
+                sys_p, usr_p = _build_threads_daily_prompt(persona, ref_posts)
+                raw = await loop.run_in_executor(executor, _call_claude, sys_p, usr_p, 0.85)
+                text, hashtag = _parse_threads_output(raw)
+                full_text = f'{text}\n\n{hashtag}'.strip() if hashtag else text
+                result = {'text': text, 'hashtag': hashtag, 'full_text': full_text, 'char_count': len(full_text), 'type': 'daily', 'num': idx}
+                yield _sse({'type': 'result', 'data': result, 'cur': idx, 'total': total})
+            yield _sse({'type': 'complete', 'total': total})
+        else:
+            total = len(keywords) * count
+            idx = 0
+            for kw_data in keywords:
+                kw = kw_data if isinstance(kw_data, str) else kw_data.get('keyword', '')
+                page_id = '' if isinstance(kw_data, str) else kw_data.get('page_id', '')
+                for c in range(count):
+                    if await request.is_disconnected():
+                        print("[threads_generate] 클라이언트 연결 끊김, 생성 중단")
+                        return
+                    idx += 1
+                    label = kw if count == 1 else f'{kw} (#{c+1})'
+                    yield _sse({'type': 'progress', 'msg': f'[{idx}/{total}] {label} — 물길글 생성 중...', 'cur': idx-1, 'total': total})
+                    sys_p, usr_p = _build_threads_traffic_prompt(kw, persona, product, forbidden, selling_logic)
+                    raw = await loop.run_in_executor(executor, _call_claude, sys_p, usr_p, 0.8)
+                    text, hashtag = _parse_threads_output(raw)
+                    full_text = f'{text}\n\n{hashtag}'.strip() if hashtag else text
+                    result = {
+                        'keyword': kw, 'text': text, 'hashtag': hashtag,
+                        'full_text': full_text, 'char_count': len(full_text),
+                        'type': 'traffic', 'page_id': page_id, 'num': c + 1,
+                    }
+                    yield _sse({'type': 'result', 'data': result, 'cur': idx, 'total': total})
+            yield _sse({'type': 'complete', 'total': total})
+      except Exception as e:
+        print(f"[threads_generate] 에러: {e}")
+        yield _sse({'type': 'error', 'message': f'쓰레드 생성 중 오류: {e}'})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@app.post("/api/threads/generate-comment")
+async def threads_generate_comment(request: Request):
+    """댓글 텍스트 생성"""
+    body = await request.json()
+    post_content = body.get('post_content', '')
+    account_id = body.get('account_id', '')
+    if not post_content:
+        return JSONResponse({'error': '게시물 내용 필요'}, 400)
+    data = _threads_load_accounts()
+    acc = next((a for a in data['accounts'] if a['id'] == account_id), None)
+    persona = acc.get('persona', {}) if acc else {'tone': '친근'}
+    loop = asyncio.get_event_loop()
+    sys_p, usr_p = _build_threads_comment_prompt(post_content, persona)
+    raw = await loop.run_in_executor(executor, _call_claude, sys_p, usr_p, 0.8)
+    comments = []
+    for line in raw.strip().split('\n'):
+        line = line.strip()
+        if line and line[0].isdigit() and '.' in line:
+            comments.append(line.split('.', 1)[1].strip())
+        elif line and not line.startswith('['):
+            comments.append(line)
+    return {'comments': comments[:5]}
+
+# ────── 게시 ──────
+
+def _threads_publish_post(access_token, user_id, text, reply_to=None):
+    """Threads 공식 API 2단계 게시"""
+    # 500자 제한
+    if len(text) > 500:
+        text = text[:497] + '...'
+    # 1단계: 컨테이너 생성
+    container_data = {'media_type': 'TEXT', 'text': text}
+    if reply_to:
+        container_data['reply_to_id'] = reply_to
+    result = _threads_api(access_token, f'{user_id}/threads', 'POST', container_data)
+    if not result.get('ok'):
+        return result
+    creation_id = result['data'].get('id', '')
+    if not creation_id:
+        return {'ok': False, 'error': 'container id 없음'}
+    # 2초 대기 (컨테이너 처리)
+    time.sleep(2)
+    # 2단계: 게시
+    pub_result = _threads_api(access_token, f'{user_id}/threads_publish', 'POST', {'creation_id': creation_id})
+    return pub_result
+
+@app.post("/api/threads/publish")
+async def threads_publish(request: Request):
+    body = await request.json()
+    account_id = body.get('account_id', '')
+    text = body.get('text', '')
+    reply_to = body.get('reply_to', None)
+    if not text:
+        return JSONResponse({'error': '텍스트 필요'}, 400)
+    data = _threads_load_accounts()
+    acc = next((a for a in data['accounts'] if a['id'] == account_id), None)
+    if not acc or not acc.get('token', {}).get('access_token'):
+        return JSONResponse({'error': '계정 미연결'}, 400)
+    token = acc['token']['access_token']
+    user_id = acc['token'].get('user_id', 'me')
+    # 일일 카운터 체크
+    today = datetime.now().strftime('%Y-%m-%d')
+    if acc.get('daily_count_date') != today:
+        acc['daily_count'] = 0
+        acc['daily_count_date'] = today
+    if acc['daily_count'] >= 250:
+        return JSONResponse({'error': '일일 게시 한도 초과 (250건)'}, 429)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(executor, _threads_publish_post, token, user_id, text, reply_to)
+    if result.get('ok'):
+        acc['daily_count'] = acc.get('daily_count', 0) + 1
+        _threads_save_accounts(data)
+    return result
+
+# ────── Notion 저장 ──────
+
+@app.post("/api/threads/save-notion")
+async def threads_save_notion(request: Request):
+    body = await request.json()
+    headers_n = {
+        'Authorization': 'Bearer %s' % NOTION_TOKEN,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28',
+    }
+    kw = body.get('keyword', '쓰레드')
+    post_type = body.get('type', 'daily')
+    type_label = '일상글' if post_type == 'daily' else '물길글'
+    props = {
+        '제목': {'title': [{'text': {'content': f'{kw} 쓰레드 {type_label}'}}]},
+        '채널': {'select': {'name': '쓰레드'}},
+        '생산 상태': {'select': {'name': '초안'}},
+        '배포 상태': {'select': {'name': '미배포'}},
+    }
+    text = body.get('text', '')
+    if text:
+        props['본문 요약'] = {'rich_text': [{'text': {'content': text[:2000]}}]}
+    if body.get('page_id'):
+        props['키워드'] = {'relation': [{'id': body['page_id']}]}
+    payload = {'parent': {'database_id': CONTENT_DB_ID}, 'properties': props}
+    if text:
+        children = []
+        for para in [p.strip() for p in text.split('\n\n') if p.strip()][:100]:
+            for k in range(0, len(para), 2000):
+                children.append({'object': 'block', 'type': 'paragraph',
+                    'paragraph': {'rich_text': [{'type': 'text', 'text': {'content': para[k:k+2000]}}]}})
+        payload['children'] = children[:100]
+    try:
+        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
+        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+# ────── 스케줄러 ──────
+
+@app.post("/api/threads/schedule")
+async def threads_schedule_post(request: Request):
+    """게시물을 스케줄 큐에 등록"""
+    body = await request.json()
+    queue = _threads_load_queue()
+    item = {
+        'id': str(uuid.uuid4())[:8],
+        'account_id': body.get('account_id', ''),
+        'text': body.get('text', ''),
+        'type': body.get('type', 'daily'),
+        'keyword': body.get('keyword', ''),
+        'page_id': body.get('page_id', ''),
+        'created_at': datetime.now().isoformat(),
+        'scheduled_at': None,  # 스케줄러가 자동 배정
+        'status': 'pending',  # pending / published / failed
+    }
+    queue['queue'].append(item)
+    _threads_save_queue(queue)
+    return {'ok': True, 'queue_id': item['id']}
+
+@app.get("/api/threads/queue")
+async def threads_queue_list():
+    queue = _threads_load_queue()
+    return {'queue': queue.get('queue', [])}
+
+@app.delete("/api/threads/queue/{queue_id}")
+async def threads_queue_delete(queue_id: str):
+    queue = _threads_load_queue()
+    queue['queue'] = [q for q in queue['queue'] if q['id'] != queue_id]
+    _threads_save_queue(queue)
+    return {'ok': True}
+
