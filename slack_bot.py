@@ -347,82 +347,179 @@ def _build_args_str(channel_key: str, args: dict) -> str:
 # ─────────────────────────── 데일리 다이제스트 ───────────────────────────
 
 def daily_digest():
-    """매일 아침 데일리 다이제스트 → #report 채널."""
+    """매일 아침 브리핑 → #headquarters 채널."""
     try:
-        # job_state.json에서 어제 생산량 집계
-        today = datetime.now().strftime("%Y%m%d")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        import requests as _req
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        yesterday_str = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        weekday_kr = ['월', '화', '수', '목', '금', '토', '일'][today.weekday()]
 
-        jobs = []
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, "r") as f:
-                data = json.load(f)
-                jobs = data.get("jobs", [])
-
-        # 어제 + 오늘 작업 필터
-        recent_jobs = [j for j in jobs if j.get("created_at", "").replace("-", "")[:8] in (yesterday, today)]
-
-        # v2 프로젝트 폴더도 스캔
-        v2_projects = []
-        if os.path.isdir(PROJECTS_DIR):
-            for channel in os.listdir(PROJECTS_DIR):
-                ch_dir = os.path.join(PROJECTS_DIR, channel)
-                if os.path.isdir(ch_dir):
-                    for proj in os.listdir(ch_dir):
-                        status_file = os.path.join(ch_dir, proj, "status.json")
-                        if os.path.exists(status_file):
-                            with open(status_file, "r") as f:
-                                status = json.load(f)
-                            if status.get("created_at", "").replace("-", "")[:8] in (yesterday, today):
-                                v2_projects.append(status)
-
-        # 채널별 집계
-        channel_counts = {}
-        for j in recent_jobs:
-            ch = j.get("channel", "unknown")
-            channel_counts[ch] = channel_counts.get(ch, 0) + 1
-        for p in v2_projects:
-            ch = p.get("channel", "unknown") + "_v2"
-            channel_counts[ch] = channel_counts.get(ch, 0) + 1
-
-        total = sum(channel_counts.values())
-
-        # 에러 집계
-        errors = [j for j in recent_jobs if j.get("revision_count", 0) > 2]
-        v2_errors = [p for p in v2_projects if p.get("revision_count", 0) > 2]
-
-        # 메시지 구성
         lines = [
-            f":sunrise: *데일리 다이제스트* — {datetime.now().strftime('%Y-%m-%d %A')}",
+            f":sunrise: *아침 브리핑* — {today_str} ({weekday_kr}요일)",
             "",
-            f"*어제~오늘 생산량: {total}건*",
         ]
-        if channel_counts:
-            for ch, cnt in sorted(channel_counts.items()):
-                emoji = CHANNELS.get(ch, {}).get("emoji", ":pushpin:")
-                lines.append(f"  {emoji} {ch}: {cnt}건")
-        else:
-            lines.append("  (생산 없음)")
 
-        if errors or v2_errors:
-            lines.append(f"\n:warning: *리비전 3회 초과: {len(errors) + len(v2_errors)}건*")
-            for j in errors[:5]:
-                lines.append(f"  - {j.get('job_id', '?')}: 리비전 {j.get('revision_count', '?')}회")
+        # 1. 어제 생산 현황 (Notion API)
+        try:
+            r = _req.get("http://localhost:8000/api/schedule/today", timeout=10)
+            if r.status_code == 200:
+                prod = r.json()
+                counts = prod.get("counts", {})
+                total = prod.get("total", 0)
+                if total > 0:
+                    lines.append(f"*:bar_chart: 어제 생산: {total}건*")
+                    for ch, cnt in sorted(counts.items()):
+                        emoji = CHANNELS.get(ch, {}).get("emoji", ":pushpin:")
+                        lines.append(f"  {emoji} {ch}: {cnt}건")
+                else:
+                    lines.append("*:bar_chart: 어제 생산: 0건*")
+        except Exception:
+            lines.append("*:bar_chart: 생산 현황: 서버 연결 실패*")
 
-        # 오늘 스케줄
-        lines.append(f"\n:calendar: *오늘 스케줄*")
+        # 2. 작업함 대기 현황
+        try:
+            r = _req.get("http://localhost:8000/api/inbox/list?days=3&status=unsaved", timeout=5)
+            if r.status_code == 200:
+                inbox = r.json()
+                summary = inbox.get("summary", {})
+                unsaved = len(inbox.get("items", []))
+                if unsaved > 0:
+                    approved = summary.get("approved", 0)
+                    failed = summary.get("failed", 0)
+                    lines.append(f"\n*:inbox_tray: 작업함 대기: {unsaved}건*")
+                    if approved:
+                        lines.append(f"  :white_check_mark: 승인됨 {approved}건 — 저장 대기")
+                    if failed:
+                        lines.append(f"  :warning: 미달 {failed}건 — 확인 필요")
+        except Exception:
+            pass
+
+        # 3. API 비용 (어제)
+        usage_file = os.path.join(BASE_DIR, "api_usage.json")
+        if os.path.exists(usage_file):
+            try:
+                with open(usage_file, "r") as f:
+                    usage = json.load(f)
+                records = usage.get("records", [])
+                yesterday_recs = [r for r in records if r.get("date") == yesterday_str]
+                month_recs = [r for r in records if r.get("date", "").startswith(today.strftime("%Y-%m"))]
+                y_cost = sum(r.get("cost_usd", 0) for r in yesterday_recs)
+                m_cost = sum(r.get("cost_usd", 0) for r in month_recs)
+                lines.append(f"\n*:moneybag: API 비용*")
+                lines.append(f"  어제: ${y_cost:.2f} | 이번 달: ${m_cost:.2f}")
+            except Exception:
+                pass
+
+        # 4. 오늘 할일 (스케줄러)
+        lines.append(f"\n*:calendar: 오늘 할일*")
         if os.path.exists(SCHEDULE_FILE):
             with open(SCHEDULE_FILE, "r") as f:
                 schedule = json.load(f)
             daily = schedule.get("daily", {})
+            weekly = schedule.get("weekly", {})
+            today_day = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][today.weekday()]
+
+            has_tasks = False
             for key, item in daily.items():
                 if item.get("enabled"):
                     lines.append(f"  {item.get('time', '')} — {item.get('label', key)}")
+                    has_tasks = True
+            for key, item in weekly.items():
+                if item.get("enabled") and item.get("day") == today_day:
+                    lines.append(f"  {item.get('time', '')} — {item.get('label', key)} (주간)")
+                    has_tasks = True
+            if not has_tasks:
+                lines.append("  (예정된 할일 없음)")
+        else:
+            lines.append("  (스케줄 미설정)")
+
+        # 5. 자동 배치 스케줄
+        if os.path.exists(SCHEDULE_FILE):
+            with open(SCHEDULE_FILE, "r") as f:
+                schedule = json.load(f)
+            auto_batch = [e for e in schedule.get("auto_batch", []) if e.get("enabled")]
+            if auto_batch:
+                lines.append(f"\n*:robot_face: 자동 실행 예정*")
+                for entry in auto_batch:
+                    tasks_str = ", ".join(f"{t['channel']}×{t['count']}" for t in entry.get("tasks", []))
+                    lines.append(f"  {entry.get('time', '?')} — {tasks_str}")
+
+        _post("headquarters", "\n".join(lines))
+
+    except Exception as e:
+        _post("headquarters", f":x: 아침 브리핑 생성 실패: {e}")
+
+
+def weekly_report_slack():
+    """주간 리포트 → #report 채널. 매주 월요일 아침."""
+    try:
+        import requests as _req
+        today = datetime.now()
+        monday = today - timedelta(days=today.weekday())
+        last_monday = monday - timedelta(days=7)
+        last_sunday = monday - timedelta(days=1)
+
+        lines = [
+            f":chart_with_upwards_trend: *주간 리포트* — {last_monday.strftime('%m/%d')} ~ {last_sunday.strftime('%m/%d')}",
+            "",
+        ]
+
+        # 주간 생산 현황 (API)
+        try:
+            r = _req.get("http://localhost:8000/api/schedule/week", timeout=15)
+            if r.status_code == 200:
+                week = r.json()
+                total_week = sum(d.get("total", 0) for d in week.get("week", []))
+                lines.append(f"*생산: {total_week}건*")
+                for d in week.get("week", []):
+                    if d.get("total", 0) > 0:
+                        counts_str = ", ".join(f"{ch} {cnt}" for ch, cnt in d.get("counts", {}).items() if cnt > 0)
+                        lines.append(f"  {d.get('weekday', '')} ({d.get('date', '')}): {d.get('total', 0)}건 — {counts_str}")
+        except Exception:
+            lines.append("*생산 현황: 서버 연결 실패*")
+
+        # API 비용 (지난주)
+        usage_file = os.path.join(BASE_DIR, "api_usage.json")
+        if os.path.exists(usage_file):
+            try:
+                with open(usage_file, "r") as f:
+                    usage = json.load(f)
+                records = usage.get("records", [])
+                week_recs = [r for r in records
+                             if last_monday.strftime("%Y-%m-%d") <= r.get("date", "") <= last_sunday.strftime("%Y-%m-%d")]
+                w_cost = sum(r.get("cost_usd", 0) for r in week_recs)
+                w_calls = len(week_recs)
+                lines.append(f"\n*:moneybag: 비용: ${w_cost:.2f}* ({w_calls}회 호출)")
+
+                # 채널별
+                ch_costs = {}
+                for r in week_recs:
+                    ch = r.get("channel", "unknown")
+                    ch_costs[ch] = ch_costs.get(ch, 0) + r.get("cost_usd", 0)
+                if ch_costs:
+                    for ch, cost in sorted(ch_costs.items(), key=lambda x: -x[1])[:5]:
+                        lines.append(f"  {ch}: ${cost:.2f}")
+            except Exception:
+                pass
+
+        # 검수 현황 (작업함)
+        try:
+            r = _req.get("http://localhost:8000/api/inbox/list?days=7", timeout=5)
+            if r.status_code == 200:
+                inbox = r.json()
+                s = inbox.get("summary", {})
+                if s.get("total", 0) > 0:
+                    rate = round(s.get("approved", 0) / max(s["total"] - s.get("saved", 0), 1) * 100)
+                    lines.append(f"\n*:white_check_mark: 검수*")
+                    lines.append(f"  승인 {s.get('approved', 0)} | 미달 {s.get('failed', 0)} | 저장완료 {s.get('saved', 0)} | 승인률 {rate}%")
+        except Exception:
+            pass
 
         _post("report", "\n".join(lines))
 
     except Exception as e:
-        _post("report", f":x: 다이제스트 생성 실패: {e}")
+        _post("report", f":x: 주간 리포트 생성 실패: {e}")
 
 
 # ─────────────────────────── 소재 프리셋 관리 ───────────────────────────
@@ -568,6 +665,13 @@ def handle_digest(message, say):
     executor.submit(daily_digest)
 
 
+@app.message(re.compile(r"^!주간리포트$", re.IGNORECASE))
+def handle_weekly_report(message, say):
+    """수동 주간 리포트 실행."""
+    say(":chart_with_upwards_trend: 주간 리포트 생성 중...")
+    executor.submit(weekly_report_slack)
+
+
 @app.message(re.compile(r"^!배치\s+(.+)", re.IGNORECASE))
 def handle_batch(message, say, context):
     """/배치 블로그 3개 숏츠 2개"""
@@ -656,7 +760,8 @@ def handle_help(message, say):
         ":pushpin: *기본*\n"
         "`!상태` — 서버 + 작업 현황\n"
         "`!비용` — API 비용 조회 (이번 달/오늘/채널별)\n"
-        "`!다이제스트` — 수동 리포트 생성\n"
+        "`!다이제스트` — 아침 브리핑 수동 실행\n"
+        "`!주간리포트` — 주간 리포트 수동 실행\n"
         "`!채널생성` — 10개 채널 + #report 자동 생성\n\n"
         ":package: *소재 관리*\n"
         "`!소재설정 제품명=X, 브랜드=Y, USP=Z, 타겟=T, 성분=I, 키워드=K` — 기본 소재 저장\n"
@@ -943,8 +1048,10 @@ def main():
 
     # APScheduler: 매분 스케줄 체크
     scheduler.add_job(scheduled_batch_run, 'interval', minutes=1)
-    # 매일 09:00 다이제스트
+    # 매일 09:00 아침 브리핑
     scheduler.add_job(scheduled_digest, 'cron', hour=9, minute=0)
+    # 매주 월요일 09:30 주간 리포트
+    scheduler.add_job(weekly_report_slack, 'cron', day_of_week='mon', hour=9, minute=30)
     scheduler.start()
 
     # Socket Mode로 시작
