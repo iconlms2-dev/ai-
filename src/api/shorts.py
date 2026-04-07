@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 
 from src.services.config import executor, ELEVENLABS_API_KEY, SHORTS_DIR
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 
 router = APIRouter()
 
@@ -272,7 +273,15 @@ async def shorts_script(request: Request):
         if result.startswith("[ERROR]"):
             yield _sse({"type": "error", "message": result})
             return
-        yield _sse({"type": "script", "text": result})
+        # ── 검수 단계 ──
+        yield _sse({"type": "progress", "msg": "대본 검수 중..."})
+        review_result = await loop.run_in_executor(
+            executor, review_and_save, "shorts", {"script": result}, "",
+        )
+        for ev in review_result.get("events", []):
+            yield _sse(ev)
+
+        yield _sse({"type": "script", "text": result, "review_status": review_result["status"], "review_passed": review_result["passed"]})
         yield _sse({"type": "complete"})
       except Exception as e:
         print(f"[shorts_script] 에러: {e}")
@@ -358,13 +367,35 @@ async def shorts_tts(request: Request):
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(script)
 
-        yield _sse({
+        # Google Drive 업로드
+        drive_result = {}
+        try:
+            from src.services.google_drive import is_configured, upload_shorts_files
+            if is_configured():
+                yield _sse({"type": "progress", "msg": "Google Drive 업로드 중..."})
+                drive_result = await loop.run_in_executor(
+                    executor, upload_shorts_files, audio_path, srt_path, txt_path, True
+                )
+        except Exception as e:
+            print(f"[shorts_tts] Drive 업로드 실패 (로컬 파일 유지): {e}")
+
+        complete_data = {
             "type": "complete",
             "audio_url": f"/api/shorts/download/{audio_filename}",
             "srt_url": f"/api/shorts/download/{srt_filename}",
             "txt_url": f"/api/shorts/download/{txt_filename}",
             "srt_preview": srt_content[:500],
-        })
+        }
+        if drive_result:
+            complete_data["drive"] = drive_result
+            if drive_result.get("audio", {}).get("url"):
+                complete_data["drive_audio_url"] = drive_result["audio"]["url"]
+            if drive_result.get("srt", {}).get("url"):
+                complete_data["drive_srt_url"] = drive_result["srt"]["url"]
+            if drive_result.get("txt", {}).get("url"):
+                complete_data["drive_txt_url"] = drive_result["txt"]["url"]
+
+        yield _sse(complete_data)
 
       except Exception as e:
         print(f"[shorts_tts] 에러: {e}")

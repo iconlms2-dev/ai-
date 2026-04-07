@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from src.services.config import executor, KEYWORD_DB_ID, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.common import error_response
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 from src.services.notion_client import notion_query_all, extract_prop, notion_headers
 
 router = APIRouter()
@@ -290,6 +291,17 @@ async def jisikin_generate(request: Request):
                 'answer1': answer1, 'answer2': answer2,
                 'page_id': kw_data.get('page_id', ''),
             }
+
+            # ── 검수 단계 ──
+            yield _sse({'type': 'progress', 'msg': f'[{i+1}/{total}] {kw} — 검수 중...', 'cur': i, 'total': total})
+            review_result = await loop.run_in_executor(
+                executor, review_and_save, "jisikin", result, kw,
+            )
+            for ev in review_result.get("events", []):
+                yield _sse(ev)
+            result['review_status'] = review_result["status"]
+            result['review_passed'] = review_result["passed"]
+
             yield _sse({'type': 'result', 'data': result, 'cur': i+1, 'total': total})
 
         yield _sse({'type': 'complete', 'total': total})
@@ -347,7 +359,7 @@ async def jisikin_save_notion(request: Request):
     props = {
         '제목': {'title': [{'text': {'content': body.get('q_title', '')}}]},
         '채널': {'select': {'name': '지식인'}},
-        '생산 상태': {'select': {'name': '초안'}},
+        '생산 상태': {'select': {'name': '승인됨' if body.get('review_status') == 'approved' else '초안'}},
         '발행_상태': {'select': {'name': '미발행'}},
     }
     if body.get('q_body'):

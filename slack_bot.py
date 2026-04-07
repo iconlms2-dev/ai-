@@ -97,8 +97,56 @@ def _post_blocks(channel: str, blocks: list, text: str = ""):
 
 # ─────────────────────────── 파이프라인 실행기 ───────────────────────────
 
-def run_pipeline(channel_key: str, args_str: str, slack_channel: str = None, thread_ts: str = None):
-    """파이프라인을 subprocess로 실행하고 결과를 Slack에 보고."""
+def _build_api_payload(channel_key: str, args: dict) -> dict:
+    """채널별 API 요청 payload 생성."""
+    product = args.get("product", {})
+    keyword = args.get("keyword", "")
+
+    if channel_key == "blog":
+        return {"keywords": [{"keyword": keyword, "stage": args.get("stage", "3_정보습득")}], "product": product}
+    elif channel_key == "cafe-seo":
+        return {"keywords": [{"keyword": keyword}], "urls": [], "product": product, "settings": {}}
+    elif channel_key == "cafe-viral":
+        return {"category": args.get("category", ""), "product": product, "set_count": 3}
+    elif channel_key == "jisikin":
+        return {"keywords": [{"keyword": keyword}], "product": product}
+    elif channel_key == "youtube":
+        return {"videos": [{"title": keyword, "description": "", "script": ""}], "product_name": product.get("name", ""), "brand_keyword": product.get("brand_keyword", "")}
+    elif channel_key == "tiktok":
+        return {"keywords": [{"keyword": keyword}], "product": product, "appeal": args.get("appeal", ""), "buying_one": args.get("buying_one", ""), "count": 1}
+    elif channel_key == "shorts":
+        material = {"product": product.get("name", ""), "target": product.get("target", ""), "problem": product.get("problem", ""), "emotion": product.get("emotion", ""), "trust": product.get("trust", ""), "cta": product.get("cta", "")}
+        return {"material": material, "type": "썰형", "topic": args.get("topic", ""), "length": 600}
+    elif channel_key == "community":
+        return {"keywords": [keyword], "community": args.get("community", "뽐뿌"), "strategy": args.get("strategy", "1"), "product": product, "appeal": args.get("appeal", ""), "buying_one": args.get("buying_one", "")}
+    elif channel_key == "powercontent":
+        return {"keyword": keyword, "product": product, "appeal": args.get("appeal", ""), "buying_thing": args.get("buying_thing", "")}
+    elif channel_key == "threads":
+        return {"type": args.get("type", "traffic"), "keywords": [keyword], "product": product, "count": 1, "account_id": args.get("account_id", "")}
+    return {}
+
+
+def _get_api_endpoint(channel_key: str) -> str:
+    """채널별 API 엔드포인트 매핑."""
+    endpoints = {
+        "blog": "/api/blog/generate",
+        "cafe-seo": "/api/cafe/generate",
+        "cafe-viral": "/api/viral/generate",
+        "jisikin": "/api/jisikin/generate",
+        "youtube": "/api/youtube/generate",
+        "tiktok": "/api/tiktok/generate",
+        "shorts": "/api/shorts/script",
+        "community": "/api/community/generate",
+        "powercontent": "/api/powercontent/generate",
+        "threads": "/api/threads/generate",
+    }
+    return endpoints.get(channel_key, f"/api/{channel_key}/generate")
+
+
+def run_pipeline(channel_key: str, args_str: str, slack_channel: str = None, thread_ts: str = None, args_dict: dict = None):
+    """파이프라인을 HTTP API로 실행하고 결과를 Slack에 보고."""
+    import requests as req
+
     ch = CHANNELS.get(channel_key)
     if not ch:
         _post(slack_channel or "general", f"알 수 없는 채널: {channel_key}")
@@ -107,22 +155,77 @@ def run_pipeline(channel_key: str, args_str: str, slack_channel: str = None, thr
     target_channel = slack_channel or ch["name"]
     _post(target_channel, f"{ch['emoji']} *{channel_key}* 파이프라인 시작...", thread_ts)
 
-    cmd = f"cd {BASE_DIR} && python3 -m {ch['module']} {args_str}"
+    endpoint = _get_api_endpoint(channel_key)
+    url = f"http://localhost:8000{endpoint}"
+    payload = _build_api_payload(channel_key, args_dict or {})
+
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=600,
-            cwd=BASE_DIR,
-        )
-        output = result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout
-        if result.returncode == 0:
-            # "최종 보고" 섹션 추출
-            report = _extract_report(output)
-            _post(target_channel, f"{ch['emoji']} *{channel_key}* 완료\n```\n{report}\n```", thread_ts)
+        r = req.post(url, json=payload, stream=True, timeout=600)
+        events = []
+        review_events = []
+        results = []
+
+        for line in r.iter_lines(decode_unicode=True):
+            if not line or not line.startswith("data: "):
+                continue
+            try:
+                ev = json.loads(line[6:])
+                events.append(ev)
+                ev_type = ev.get("type", "")
+
+                if ev_type == "progress":
+                    pass  # 진행 상황은 조용히 처리
+                elif ev_type == "result":
+                    results.append(ev.get("data", ev))
+                elif ev_type in ("reviewing", "reviewing_ai", "revision", "review_rule_fail", "review_rule_pass", "review_ai_done", "review_pass", "review_fail"):
+                    review_events.append(ev)
+                    # 핵심 검수 이벤트만 Slack에 중계
+                    if ev_type in ("revision", "review_pass", "review_fail"):
+                        _post(target_channel, f"  {ev.get('msg', '')}", thread_ts)
+                elif ev_type == "error":
+                    _post(target_channel, f":x: *{channel_key}* 에러: {ev.get('message', '')}", thread_ts)
+                    return
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        # 작업함에 저장 + 완료 보고
+        if results:
+            # 작업함에 결과 저장
+            from src.api.inbox import add_to_inbox
+            saved_count = 0
+            for r_item in results:
+                try:
+                    add_to_inbox({
+                        "channel": channel_key,
+                        "keyword": r_item.get("keyword", r_item.get("title", "")),
+                        "title": r_item.get("title", r_item.get("keyword", "")),
+                        "content": r_item,
+                        "review_status": r_item.get("review_status", "draft"),
+                        "review_passed": r_item.get("review_passed"),
+                        "review_score": r_item.get("ai_review", {}).get("score", 0) if isinstance(r_item.get("ai_review"), dict) else 0,
+                        "revision_count": r_item.get("revision_count", 0),
+                        "source": "slack",
+                    })
+                    saved_count += 1
+                except Exception as e:
+                    logger.error("작업함 저장 실패: %s", e)
+
+            review_status = results[-1].get("review_status", "unknown")
+            review_passed = results[-1].get("review_passed", None)
+            status_emoji = ":white_check_mark:" if review_passed else ":warning:"
+            report_lines = [f"생성: {len(results)}개", f"검수: {review_status} {status_emoji}"]
+            if review_events:
+                for rev_ev in review_events[-3:]:
+                    report_lines.append(f"  - {rev_ev.get('msg', '')}")
+            report_lines.append(f"→ 대시보드 작업함에 {saved_count}개 저장됨")
+            _post(target_channel, f"{ch['emoji']} *{channel_key}* 완료\n```\n" + "\n".join(report_lines) + "\n```", thread_ts)
         else:
-            error = result.stderr[-1000:] if result.stderr else output[-1000:]
-            _post(target_channel, f":x: *{channel_key}* 실패\n```\n{error}\n```", thread_ts)
-    except subprocess.TimeoutExpired:
+            _post(target_channel, f"{ch['emoji']} *{channel_key}* 완료 (결과 없음)", thread_ts)
+
+    except req.exceptions.Timeout:
         _post(target_channel, f":warning: *{channel_key}* 타임아웃 (10분 초과)", thread_ts)
+    except req.exceptions.ConnectionError:
+        _post(target_channel, f":x: *{channel_key}* 서버 연결 실패 (localhost:8000)", thread_ts)
     except Exception as e:
         _post(target_channel, f":x: *{channel_key}* 에러: {e}", thread_ts)
 

@@ -12,7 +12,7 @@
 server.py(진입점 ~8줄) → src/api/create_app() → 20개 라우터
 src/services/ — config, common, ai_client, notion_client, naver_search, selenium_pool
 src/pipeline_v2/ — 채널별 파이프라인 (state_machine, rule_validators, tool_boundary)
-.claude/agents/ — 계층: master-orchestrator → 팀장(content/analytics/ops-lead) → 채널별 직원
+.claude/agents/ — 계층: 사장(master-orchestrator) → 콘텐츠부장(content-lead)/분석팀장/운영팀장 → 채널별 팀장(pipeline) → 직원(strategist/writer/reviewer)
 
 ## 상태 전이 (코드 강제)
 draft → under_review → revision → under_review → approved → publish_ready → published

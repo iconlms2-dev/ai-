@@ -34,6 +34,7 @@ THREADS_QUEUE_FILE  = os.path.join(BASE_DIR, "threads_queue.json")
 API_USAGE_FILE      = os.path.join(BASE_DIR, "api_usage.json")
 PERF_DATA_FILE      = os.path.join(BASE_DIR, "performance_data.json")
 PERF_SCHEDULE_FILE  = os.path.join(BASE_DIR, "performance_schedule.json")
+WORK_INBOX_FILE     = os.path.join(BASE_DIR, "work_inbox.json")
 
 os.makedirs(SHORTS_DIR, exist_ok=True)
 

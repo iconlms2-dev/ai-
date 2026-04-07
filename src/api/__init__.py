@@ -17,7 +17,7 @@ def create_app() -> FastAPI:
         cafe24, keywords, blog, cafe, viral, jisikin, youtube,
         tiktok, shorts, community, photo, ad, powercontent,
         schedule, batch, naver, threads, performance, status,
-        prompt_test, static,
+        prompt_test, static, inbox,
     )
 
     app.include_router(static.router)
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(performance.router, prefix="/api/performance")
     app.include_router(status.router, prefix="/api/status")
     app.include_router(prompt_test.router, prefix="/api/prompt-test")
+    app.include_router(inbox.router, prefix="/api/inbox")
 
     @app.on_event("startup")
     async def _start_weekly_scheduler():

@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from src.services.config import executor, KEYWORD_DB_ID, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 
 router = APIRouter()
 
@@ -155,6 +156,17 @@ async def tiktok_generate(request: Request):
                     'page_id': kw_data.get('page_id', ''),
                     'num': c + 1,
                 }
+
+                # ── 검수 단계 ──
+                yield _sse({'type': 'progress', 'msg': f'[{idx}/{total}] {label} — 검수 중...', 'cur': idx-1, 'total': total})
+                review_result = await loop.run_in_executor(
+                    executor, review_and_save, "tiktok", result, kw,
+                )
+                for ev in review_result.get("events", []):
+                    yield _sse(ev)
+                result['review_status'] = review_result["status"]
+                result['review_passed'] = review_result["passed"]
+
                 yield _sse({'type': 'result', 'data': result, 'cur': idx, 'total': total})
         yield _sse({'type': 'complete', 'total': total})
       except Exception as e:
@@ -176,7 +188,7 @@ async def tiktok_save_notion(request: Request):
     props = {
         '제목': {'title': [{'text': {'content': '%s 틱톡 스크립트' % kw}}]},
         '채널': {'select': {'name': '틱톡'}},
-        '생산 상태': {'select': {'name': '초안'}},
+        '생산 상태': {'select': {'name': '승인됨' if body.get('review_status') == 'approved' else '초안'}},
         '발행_상태': {'select': {'name': '미발행'}},
     }
     script = body.get('script', '')

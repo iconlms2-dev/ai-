@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.common import error_response
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 from src.services.notion_client import notion_headers
 
 router = APIRouter()
@@ -269,6 +270,17 @@ async def viral_generate(request: Request):
                 'stage2': s2,
                 'stage3': s3,
             }
+
+            # ── 검수 단계 ──
+            yield _sse({'type': 'progress', 'msg': f'[세트 {s+1}/{set_count}] 검수 중...', 'cur': step_base+2, 'total': total_steps})
+            review_result = await loop.run_in_executor(
+                executor, review_and_save, "cafe-viral", result, "",
+            )
+            for ev in review_result.get("events", []):
+                yield _sse(ev)
+            result['review_status'] = review_result["status"]
+            result['review_passed'] = review_result["passed"]
+
             yield _sse({'type': 'result', 'data': result, 'cur': step_base+3, 'total': total_steps})
 
         yield _sse({'type': 'complete', 'total': set_count})
@@ -287,7 +299,7 @@ async def viral_save_notion(request: Request):
     props = {
         '제목': {'title': [{'text': {'content': body.get('title', '')}}]},
         '채널': {'select': {'name': '카페'}},
-        '생산 상태': {'select': {'name': '초안'}},
+        '생산 상태': {'select': {'name': '승인됨' if body.get('review_status') == 'approved' else '초안'}},
         '발행_상태': {'select': {'name': '미발행'}},
     }
     if body.get('body_summary'):

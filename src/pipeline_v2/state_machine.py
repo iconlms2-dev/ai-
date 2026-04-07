@@ -21,7 +21,8 @@ ALLOWED_TRANSITIONS = {
     "under_review": ["revision", "approved"],
     "revision": ["under_review"],
     "approved": ["publish_ready"],
-    "publish_ready": ["published"],
+    "publish_ready": ["uploading", "published"],
+    "uploading": ["published"],
 }
 
 

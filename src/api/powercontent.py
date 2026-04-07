@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from src.services.config import executor, BASE_DIR, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.common import error_response
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 from src.services.notion_client import notion_headers
 
 router = APIRouter()
@@ -257,7 +258,19 @@ async def pc_generate(request: Request):
             usr3 = "글자수가 부족합니다. 현재 %d자입니다. %d자 이상으로 다시 작성해주세요. 이전 내용의 구조를 유지하면서 각 단락을 더 풍부하게 확장해주세요.\n\n" % (char_count, target_chars) + usr3
 
         char_count = len(body_text)
-        yield _sse({'type':'result','ad_title':ad_title,'ad_desc':ad_desc,'body':body_text,'char_count':char_count,'target_chars':target_chars})
+
+        # ── 검수 단계 ──
+        yield _sse({'type': 'progress', 'msg': '검수 중...'})
+        pc_content = {'ad_title': ad_title, 'ad_desc': ad_desc, 'body': body_text, 'char_count': char_count}
+        review_result = await loop.run_in_executor(
+            executor, review_and_save, "powercontent", pc_content, keyword,
+        )
+        for ev in review_result.get("events", []):
+            yield _sse(ev)
+        review_status = review_result["status"]
+        review_passed = review_result["passed"]
+
+        yield _sse({'type':'result','ad_title':ad_title,'ad_desc':ad_desc,'body':body_text,'char_count':char_count,'target_chars':target_chars,'review_status':review_status,'review_passed':review_passed})
         yield _sse({'type':'complete'})
       except Exception as e:
         print(f"[powercontent_generate] 에러: {e}")
@@ -323,7 +336,7 @@ async def pc_save_notion(request: Request):
     props = {
         '제목': {'title': [{'text': {'content': body.get('ad_title', '')}}]},
         '채널': {'select': {'name': '파워컨텐츠'}},
-        '생산 상태': {'select': {'name': '초안'}},
+        '생산 상태': {'select': {'name': '승인됨' if body.get('review_status') == 'approved' else '초안'}},
         '발행_상태': {'select': {'name': '미발행'}},
     }
     summary = body.get('body', '')[:300]

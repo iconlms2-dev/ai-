@@ -163,6 +163,11 @@
       </div>
     </div>
     <nav class="sidebar-nav">
+      <!-- 오늘 -->
+      <div class="nav-item active" data-menu="today" onclick="selectMenu(this)" style="font-weight:600">
+        <span class="nav-item-icon">📋</span> 오늘 할일
+      </div>
+      <div class="nav-divider"></div>
       <!-- 분석 -->
       <div class="nav-category">분석</div>
       <div class="nav-item" data-menu="keyword-analysis" onclick="selectMenu(this)">
@@ -195,6 +200,7 @@
       <div class="nav-item" data-menu="ad-auto" onclick="selectMenu(this)"><span class="nav-item-icon">🚀</span> 광고소재 자동화</div>
       <div class="nav-divider"></div>
       <div class="nav-category">운영</div>
+      <div class="nav-item" data-menu="work-inbox" onclick="selectMenu(this)"><span class="nav-item-icon">📥</span> 작업함</div>
       <div class="nav-item" data-menu="batch-gen" onclick="selectMenu(this)"><span class="nav-item-icon">⚡</span> 일괄 생성</div>
       <div class="nav-item" data-menu="naver-accounts" onclick="selectMenu(this)"><span class="nav-item-icon">👤</span> 계정 관리</div>
       <div class="nav-item" data-menu="scheduler" onclick="selectMenu(this)"><span class="nav-item-icon">⏰</span> 스케줄러</div>
@@ -291,6 +297,60 @@ function showToast(message, type='info') {
   setTimeout(() => { if (el.parentNode) el.remove(); }, 3000);
 }
 
+// ── 검수 이벤트 처리 헬퍼 ──
+function handleReviewEvent(ev, statusEl) {
+  if (!statusEl) return false;
+  const t = ev.type;
+  if (t === 'reviewing' || t === 'reviewing_ai') {
+    statusEl.innerHTML = '<span style="color:#f59e0b;">&#9881; ' + esc(ev.msg) + '</span>';
+    return true;
+  }
+  if (t === 'review_rule_pass') {
+    statusEl.innerHTML = '<span style="color:#22c55e;">&#10003; ' + esc(ev.msg) + '</span>';
+    return true;
+  }
+  if (t === 'review_rule_fail') {
+    const errs = (ev.errors || []).slice(0, 3).join(', ');
+    statusEl.innerHTML = '<span style="color:#ef4444;">&#10007; ' + esc(ev.msg) + (errs ? ' (' + esc(errs) + ')' : '') + '</span>';
+    return true;
+  }
+  if (t === 'revision') {
+    statusEl.innerHTML = '<span style="color:#f59e0b;">&#8635; ' + esc(ev.msg) + '</span>';
+    return true;
+  }
+  if (t === 'review_ai_done') {
+    const score = ev.data ? ev.data.score : '';
+    statusEl.innerHTML = '<span style="color:#3b82f6;">AI ' + esc(ev.msg) + '</span>';
+    return true;
+  }
+  if (t === 'review_pass') {
+    const score = ev.data ? ev.data.score : '';
+    statusEl.innerHTML = '<span style="color:#22c55e;font-weight:600;">&#10003; ' + esc(ev.msg) + '</span>';
+    showToast(ev.msg, 'success');
+    return true;
+  }
+  if (t === 'review_fail') {
+    statusEl.innerHTML = '<span style="color:#ef4444;font-weight:600;">&#10007; ' + esc(ev.msg) + '</span>';
+    showToast(ev.msg, 'warning');
+    return true;
+  }
+  return false;
+}
+
+function createReviewStatusEl(parentEl) {
+  const el = document.createElement('div');
+  el.className = 'review-status';
+  el.style.cssText = 'margin:4px 0;padding:6px 10px;border-radius:6px;background:var(--bg-secondary,#f8f9fa);font-size:13px;min-height:20px;';
+  if (parentEl) parentEl.appendChild(el);
+  return el;
+}
+
+function renderReviewBadge(passed, revisionCount) {
+  if (passed === true) return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#dcfce7;color:#166534;font-size:12px;font-weight:600;">승인됨</span>';
+  if (passed === false) return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#fef2f2;color:#991b1b;font-size:12px;font-weight:600;">검수 미달</span>';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f3f4f6;color:#6b7280;font-size:12px;">미검수</span>';
+}
+
 // ── 공통 SSE 스트리밍 헬퍼 ──
 async function streamSSE(url, options, onEvent, onError, onComplete) {
   let completed = false;
@@ -350,6 +410,8 @@ const menuData = {
   'threads':{icon:'🧵',title:'쓰레드',category:'콘텐츠 생산',flow:['계정 관리','일상글/물길글 생성','자동 게시'],custom:true},
   'photo':{icon:'📸',title:'사진 라이브러리',category:'이미지',flow:['샤오홍슈/바이두 수집','키워드별 관리','모자이크 처리'],custom:true},
   'ad-auto':{icon:'🚀',title:'광고소재 자동화',category:'광고',flow:['제품 등록','레퍼런스 수집','소재 생성'],custom:true},
+  'today':{icon:'📋',title:'오늘 할일',category:'오늘',flow:['할일 확인','작업 실행','완료 체크'],custom:true},
+  'work-inbox':{icon:'📥',title:'작업함',category:'운영',flow:['Slack 실행 결과 확인','검수 상태 확인','Notion 저장'],custom:true},
   'batch-gen':{icon:'⚡',title:'일괄 생성',category:'운영',flow:['키워드 로드','채널 확인','일괄 생성+저장'],custom:true},
   'prompt-test':{icon:'🧪',title:'프롬프트 테스트',category:'운영',flow:['채널 선택','프롬프트 수정','테스트 생성'],custom:true},
   'naver-accounts':{icon:'👤',title:'계정 관리',category:'운영',flow:['계정 등록','IP/프록시 관리','안전 규칙'],custom:true},
@@ -386,6 +448,7 @@ function selectMenu(el) {
   mc.style.alignItems = data.custom ? 'flex-start' : 'center';
   mc.style.justifyContent = data.custom ? 'flex-start' : 'center';
 
+  if (key === 'today') { renderToday(mc); return; }
   if (key === 'keyword-analysis') { renderKA(mc); return; }
   if (key === 'blog') { renderBlog(mc); return; }
   if (key === 'cafe-seo') { renderCafe(mc); return; }
@@ -401,6 +464,7 @@ function selectMenu(el) {
   if (key === 'ad-auto') { renderAdAuto(mc); return; }
   if (key === 'powercontent') { renderPowerContent(mc); return; }
   if (key === 'threads') { renderThreads(mc); return; }
+  if (key === 'work-inbox') { renderInbox(mc); return; }
   if (key === 'batch-gen') { renderBatchGen(mc); return; }
   if (key === 'prompt-test') { renderPromptTest(mc); return; }
   if (key === 'naver-accounts') { renderNaverAccounts(mc); return; }
@@ -944,6 +1008,7 @@ function renderBlog(mc) {
       <div id="blogProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="blogProgressMsg">준비 중...</div>
         <div class="ka-progress"><div class="ka-progress-bar" id="blogProgressBar"></div></div>
+        <div id="blogReviewStatus" style="margin-top:4px;font-size:13px;"></div>
       </div>
     </div>
 
@@ -1071,6 +1136,8 @@ async function blogGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        // 검수 이벤트 처리
+        if (handleReviewEvent(ev, document.getElementById('blogReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
@@ -1079,6 +1146,9 @@ async function blogGenerate() {
           document.getElementById('blogResultsList').innerHTML += blogResultCard(ev.data, BLOG.results.length-1);
           document.getElementById('blogResCount').textContent = BLOG.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          // 검수 상태 초기화 (다음 키워드 준비)
+          const rSt = document.getElementById('blogReviewStatus');
+          if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') {
           msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개';
           bar.style.width = '100%';
@@ -1104,10 +1174,12 @@ function blogStopGenerate() {
 
 function blogResultCard(d, idx) {
   const bodyPreview = d.body.substring(0, 150).replace(/</g,'&lt;') + '...';
+  const reviewBadge = renderReviewBadge(d.review_passed, d.revision_count);
+  const revInfo = d.revision_count ? ' | 리비전 '+d.revision_count+'회' : '';
   return `<div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:12px" id="blogCard${idx}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${d.keyword} | ${d.stage} | 사진 ${d.photo_count}장 | 키워드 ${d.actual_repeat}회 | ${d.char_count}자</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${d.keyword} | ${d.stage} | 사진 ${d.photo_count}장 | 키워드 ${d.actual_repeat}회 | ${d.char_count}자${revInfo} ${reviewBadge}</div>
         <div style="font-size:15px;font-weight:600;color:var(--text-primary)">${d.title}</div>
       </div>
       <div class="ka-btn-group" style="flex-shrink:0">
@@ -1292,6 +1364,7 @@ function renderCafe(mc) {
       </div>
       <div id="cafeProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="cafeProgressMsg">준비 중...</div>
+        <div id="cafeReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="cafeProgressBar"></div></div>
       </div>
     </div>
@@ -1434,6 +1507,7 @@ async function cafeGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('cafeReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
@@ -1442,6 +1516,8 @@ async function cafeGenerate() {
           document.getElementById('cafeResultsList').innerHTML += cafeResultCard(ev.data, CAFE.results.length-1);
           document.getElementById('cafeResCount').textContent = CAFE.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('cafeReviewStatus');
+          if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') {
           msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개';
           bar.style.width = '100%';
@@ -1705,6 +1781,7 @@ function renderViral(mc) {
       </div>
       <div id="viralProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="viralProgressMsg">준비 중...</div>
+        <div id="viralReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="viralProgressBar"></div></div>
       </div>
     </div>
@@ -1785,6 +1862,7 @@ async function viralGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('viralReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
@@ -1793,6 +1871,7 @@ async function viralGenerate() {
           document.getElementById('viralResultsList').innerHTML += viralSetCard(ev.data, VIRAL.results.length-1);
           document.getElementById('viralResCount').textContent = VIRAL.results.length+'세트 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('viralReviewStatus'); if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') {
           msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'세트';
           bar.style.width = '100%';
@@ -1997,6 +2076,7 @@ function renderJisikin(mc) {
       </div>
       <div id="jisProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="jisProgressMsg">준비 중...</div>
+        <div id="jisReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="jisProgressBar"></div></div>
       </div>
     </div>
@@ -2278,6 +2358,7 @@ async function jisGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('jisReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
@@ -2287,6 +2368,7 @@ async function jisGenerate() {
           document.getElementById('jisResultsList').innerHTML += jisResultCard(ev.data, JIS.results.length-1);
           document.getElementById('jisResCount').textContent = JIS.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('jisReviewStatus'); if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') {
           msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개';
           bar.style.width = '100%';
@@ -2448,6 +2530,7 @@ function renderYoutube(mc) {
       </div>
       <div id="ytProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="ytProgressMsg">준비 중...</div>
+        <div id="ytReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="ytProgressBar"></div></div>
       </div>
     </div>
@@ -2779,6 +2862,7 @@ async function ytGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('ytReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
@@ -2787,6 +2871,7 @@ async function ytGenerate() {
           document.getElementById('ytResultsList').innerHTML += ytResultCard(ev.data, YT.results.length-1);
           document.getElementById('ytResCount').textContent = YT.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('ytReviewStatus'); if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') {
           msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개';
           bar.style.width = '100%';
@@ -3528,6 +3613,7 @@ function renderTiktok(mc) {
       </div>
       <div id="ttProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="ttProgressMsg">준비 중...</div>
+        <div id="ttReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="ttProgressBar"></div></div>
       </div>
     </div>
@@ -3624,12 +3710,14 @@ async function ttGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('ttReviewStatus'))) { continue; }
         if (ev.type === 'progress') { msg.textContent = ev.msg; if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%'; }
         else if (ev.type === 'result') {
           TT.results.push(ev.data);
           document.getElementById('ttResultsList').innerHTML += ttResultCard(ev.data, TT.results.length-1);
           document.getElementById('ttResCount').textContent = TT.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('ttReviewStatus'); if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') { msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개'; bar.style.width = '100%'; }
       }
     }
@@ -4167,6 +4255,7 @@ function renderCommunity(mc) {
       </div>
       <div id="cmtProgress" class="ka-hidden" style="margin-top:12px">
         <div class="ka-progress-text" id="cmtProgressMsg">준비 중...</div>
+        <div id="cmtReviewStatus" style="margin-top:4px;font-size:13px;"></div>
         <div class="ka-progress"><div class="ka-progress-bar" id="cmtProgressBar"></div></div>
       </div>
     </div>
@@ -4244,12 +4333,14 @@ async function cmtGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (handleReviewEvent(ev, document.getElementById('cmtReviewStatus'))) { continue; }
         if (ev.type === 'progress') { msg.textContent = ev.msg; if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%'; }
         else if (ev.type === 'result') {
           CMT.results.push(ev.data);
           document.getElementById('cmtResultsList').innerHTML += cmtResultCard(ev.data, CMT.results.length-1);
           document.getElementById('cmtResCount').textContent = CMT.results.length+'개 완료';
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
+          const rSt = document.getElementById('cmtReviewStatus'); if (rSt) rSt.innerHTML = '';
         } else if (ev.type === 'complete') { msg.textContent = '✅ 생성 완료 — 총 '+ev.total+'개'; bar.style.width = '100%'; }
       }
     }
@@ -6855,6 +6946,322 @@ if (new URLSearchParams(location.search).get('menu') === 'threads') {
     const el = document.querySelector('[data-menu="threads"]');
     if (el) { selectMenu(el); if (new URLSearchParams(location.search).get('auth') === 'ok') showToast('Threads OAuth 연결 완료!'); }
   }, 300);
+}
+
+// ═══════════════════════════ 오늘 할일 ═══════════════════════════
+
+let TODAY_STATE = { tasks: [], production: null };
+
+function renderToday(mc) {
+  mc.innerHTML = `
+    <div style="max-width:800px;width:100%">
+      <div class="ka-title">📋 오늘 할일</div>
+      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'})}</p>
+
+      <div id="todaySummary" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap"></div>
+
+      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px">할일 목록</div>
+      <div id="todayTasks" style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px"></div>
+
+      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px">오늘 생산 현황</div>
+      <div id="todayProduction" style="margin-bottom:24px"></div>
+
+      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px">작업함 대기</div>
+      <div id="todayInbox" style="margin-bottom:24px"></div>
+    </div>
+  `;
+  todayLoad();
+}
+
+async function todayLoad() {
+  // 1. 스케줄러 설정에서 daily tasks 로드
+  try {
+    const schedR = await fetch(API + '/api/scheduler/config');
+    const sched = await schedR.json();
+    const daily = sched.daily || {};
+    const weekly = sched.weekly || {};
+    const todayDay = ['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()];
+
+    let tasks = [];
+    // daily tasks
+    for (const [id, t] of Object.entries(daily)) {
+      if (t.enabled) tasks.push({ id, label: t.label || id, time: t.time || '', type: 'daily', done: false });
+    }
+    // weekly tasks (오늘 요일에 해당하는 것만)
+    for (const [id, t] of Object.entries(weekly)) {
+      if (t.enabled && t.day === todayDay) tasks.push({ id, label: t.label || id, time: t.time || '', type: 'weekly', done: false });
+    }
+    tasks.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+
+    // localStorage에서 완료 상태 복원
+    const doneKey = 'today_done_' + new Date().toISOString().slice(0, 10);
+    const doneList = JSON.parse(localStorage.getItem(doneKey) || '[]');
+    tasks.forEach(t => { if (doneList.includes(t.id)) t.done = true; });
+
+    TODAY_STATE.tasks = tasks;
+    _renderTodayTasks(tasks, doneKey);
+  } catch (e) {
+    document.getElementById('todayTasks').innerHTML = '<div style="color:var(--text-muted);font-size:13px">스케줄러 데이터를 불러올 수 없습니다</div>';
+  }
+
+  // 2. 오늘 생산 현황
+  try {
+    const prodR = await fetch(API + '/api/schedule/today');
+    const prod = await prodR.json();
+    TODAY_STATE.production = prod;
+    _renderTodayProduction(prod);
+  } catch (e) {
+    document.getElementById('todayProduction').innerHTML = '<div style="color:var(--text-muted);font-size:13px">생산 현황을 불러올 수 없습니다</div>';
+  }
+
+  // 3. 작업함 대기 건수
+  try {
+    const inboxR = await fetch(API + '/api/inbox/list?days=1&status=unsaved');
+    const inbox = await inboxR.json();
+    _renderTodayInbox(inbox);
+  } catch (e) {
+    document.getElementById('todayInbox').innerHTML = '<div style="color:var(--text-muted);font-size:13px">작업함 데이터를 불러올 수 없습니다</div>';
+  }
+
+  // 요약
+  const done = TODAY_STATE.tasks.filter(t => t.done).length;
+  const total = TODAY_STATE.tasks.length;
+  const prod = TODAY_STATE.production;
+  document.getElementById('todaySummary').innerHTML = `
+    <div style="padding:10px 18px;border-radius:8px;background:var(--bg-secondary);font-size:13px">할일 <b>${done}/${total}</b></div>
+    <div style="padding:10px 18px;border-radius:8px;background:#dcfce7;color:#166534;font-size:13px">오늘 생산 <b>${prod ? prod.total : 0}</b>건</div>
+  `;
+}
+
+function _renderTodayTasks(tasks, doneKey) {
+  const el = document.getElementById('todayTasks');
+  if (tasks.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px">오늘 예정된 할일이 없습니다</div>';
+    return;
+  }
+  el.innerHTML = tasks.map((t, i) => {
+    const checked = t.done ? 'checked' : '';
+    const style = t.done ? 'text-decoration:line-through;color:var(--text-muted)' : 'color:var(--text-primary)';
+    const badge = t.type === 'weekly' ? '<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:#eff6ff;color:#1e40af;margin-left:6px">주간</span>' : '';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="todayToggle('${t.id}','${doneKey}',this.checked)" style="width:18px;height:18px;accent-color:#22c55e">
+      <span style="font-size:13px;${style};flex:1">${esc(t.label)}${badge}</span>
+      <span style="font-size:12px;color:var(--text-muted)">${t.time}</span>
+    </label>`;
+  }).join('');
+}
+
+function todayToggle(taskId, doneKey, checked) {
+  let doneList = JSON.parse(localStorage.getItem(doneKey) || '[]');
+  if (checked && !doneList.includes(taskId)) doneList.push(taskId);
+  if (!checked) doneList = doneList.filter(x => x !== taskId);
+  localStorage.setItem(doneKey, JSON.stringify(doneList));
+  // UI 업데이트
+  TODAY_STATE.tasks.forEach(t => { if (t.id === taskId) t.done = checked; });
+  _renderTodayTasks(TODAY_STATE.tasks, doneKey);
+  // 요약 업데이트
+  const done = TODAY_STATE.tasks.filter(t => t.done).length;
+  const total = TODAY_STATE.tasks.length;
+  const prod = TODAY_STATE.production;
+  document.getElementById('todaySummary').innerHTML = `
+    <div style="padding:10px 18px;border-radius:8px;background:var(--bg-secondary);font-size:13px">할일 <b>${done}/${total}</b></div>
+    <div style="padding:10px 18px;border-radius:8px;background:#dcfce7;color:#166534;font-size:13px">오늘 생산 <b>${prod ? prod.total : 0}</b>건</div>
+  `;
+}
+
+function _renderTodayProduction(prod) {
+  const el = document.getElementById('todayProduction');
+  if (!prod || prod.total === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px">오늘 생산된 콘텐츠가 없습니다</div>';
+    return;
+  }
+  const chIcons = {'블로그':'📝','카페':'☕','지식인':'❓','유튜브':'▶️','틱톡':'🎵','숏츠':'🎬','커뮤니티':'💬','파워컨텐츠':'⚡','쓰레드':'🧵'};
+  const counts = prod.counts || {};
+  const items = Object.entries(counts).filter(([_, v]) => v > 0);
+  if (items.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px">오늘 생산된 콘텐츠가 없습니다</div>';
+    return;
+  }
+  el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${items.map(([ch, cnt]) =>
+    `<div style="padding:8px 14px;border-radius:8px;background:var(--bg-primary);border:1px solid var(--border-color);font-size:13px">${chIcons[ch]||'📄'} ${ch} <b>${cnt}</b>건</div>`
+  ).join('')}</div>`;
+}
+
+function _renderTodayInbox(inbox) {
+  const el = document.getElementById('todayInbox');
+  const items = inbox.items || [];
+  const summary = inbox.summary || {};
+  if (items.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px">대기 중인 항목 없음</div>';
+    return;
+  }
+  el.innerHTML = `<div style="padding:12px 16px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:13px">
+      미저장 <b>${items.length}</b>건
+      ${summary.approved ? ` · 승인됨 <b style="color:#166534">${summary.approved}</b>건` : ''}
+      ${summary.failed ? ` · 미달 <b style="color:#991b1b">${summary.failed}</b>건` : ''}
+    </div>
+    <button onclick="document.querySelector('[data-menu=work-inbox]').click()" style="padding:4px 12px;border-radius:6px;border:none;background:var(--accent-color);color:#fff;font-size:12px;cursor:pointer">작업함 열기</button>
+  </div>`;
+}
+
+// ═══════════════════════════ 작업함 (Work Inbox) ═══════════════════════════
+
+let INBOX = { items: [], filter: { channel: '', status: '' }, isLoading: false };
+
+function renderInbox(mc) {
+  mc.innerHTML = `
+    <div style="max-width:960px;width:100%">
+      <div class="ka-title">📥 작업함</div>
+      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">Slack에서 실행한 콘텐츠가 여기에 쌓입니다. 확인 후 Notion에 저장하세요.</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <select id="inboxChFilter" onchange="inboxLoad()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+          <option value="">전체 채널</option>
+          <option value="blog">블로그</option>
+          <option value="cafe-seo">카페SEO</option>
+          <option value="cafe-viral">카페바이럴</option>
+          <option value="jisikin">지식인</option>
+          <option value="youtube">유튜브</option>
+          <option value="tiktok">틱톡</option>
+          <option value="shorts">숏츠</option>
+          <option value="community">커뮤니티</option>
+          <option value="powercontent">파워컨텐츠</option>
+          <option value="threads">쓰레드</option>
+        </select>
+        <select id="inboxStFilter" onchange="inboxLoad()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+          <option value="">전체 상태</option>
+          <option value="approved">승인됨</option>
+          <option value="failed">미달</option>
+          <option value="saved">저장완료</option>
+          <option value="unsaved">미저장</option>
+        </select>
+        <button onclick="inboxLoad()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent-color);color:#fff;font-size:13px;cursor:pointer">새로고침</button>
+        <div style="flex:1"></div>
+        <button onclick="inboxSaveAll()" style="padding:6px 14px;border-radius:6px;border:none;background:#22c55e;color:#fff;font-size:13px;cursor:pointer;font-weight:600" id="inboxSaveAllBtn">승인됨 전체 저장</button>
+        <button onclick="inboxDeleteSaved()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--bg-secondary);color:var(--text-secondary);font-size:13px;cursor:pointer">저장완료 정리</button>
+      </div>
+
+      <div id="inboxSummary" style="display:flex;gap:12px;margin-bottom:16px"></div>
+      <div id="inboxList" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+  `;
+  inboxLoad();
+}
+
+async function inboxLoad() {
+  if (INBOX.isLoading) return;
+  INBOX.isLoading = true;
+  const ch = document.getElementById('inboxChFilter')?.value || '';
+  const st = document.getElementById('inboxStFilter')?.value || '';
+  let url = API + '/api/inbox/list?days=14';
+  if (ch) url += '&channel=' + ch;
+  if (st) url += '&status=' + st;
+
+  try {
+    const r = await fetch(url);
+    const data = await r.json();
+    INBOX.items = data.items || [];
+    const s = data.summary || {};
+
+    document.getElementById('inboxSummary').innerHTML = `
+      <div style="padding:8px 16px;border-radius:8px;background:var(--bg-secondary);font-size:13px">전체 <b>${s.total||0}</b></div>
+      <div style="padding:8px 16px;border-radius:8px;background:#dcfce7;color:#166534;font-size:13px">승인됨 <b>${s.approved||0}</b></div>
+      <div style="padding:8px 16px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:13px">미달 <b>${s.failed||0}</b></div>
+      <div style="padding:8px 16px;border-radius:8px;background:#eff6ff;color:#1e40af;font-size:13px">저장완료 <b>${s.saved||0}</b></div>
+    `;
+
+    const list = document.getElementById('inboxList');
+    if (INBOX.items.length === 0) {
+      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px">작업함이 비어있습니다</div>';
+    } else {
+      list.innerHTML = INBOX.items.map((item, idx) => inboxCard(item, idx)).join('');
+    }
+    document.getElementById('inboxSaveAllBtn').textContent = `승인됨 전체 저장 (${s.approved||0}개)`;
+  } catch (e) {
+    document.getElementById('inboxList').innerHTML = '<div style="color:#ef4444;padding:20px">불러오기 실패: ' + e.message + '</div>';
+  }
+  INBOX.isLoading = false;
+}
+
+function inboxCard(item, idx) {
+  const chIcons = {'blog':'📝','cafe-seo':'☕','cafe-viral':'🔥','jisikin':'❓','youtube':'▶️','tiktok':'🎵','shorts':'🎬','community':'💬','powercontent':'⚡','threads':'🧵'};
+  const icon = chIcons[item.channel] || '📄';
+  const badge = renderReviewBadge(item.review_passed, item.revision_count);
+  const saved = item.saved_to_notion;
+  const savedBadge = saved ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#eff6ff;color:#1e40af;font-size:11px;margin-left:4px">저장됨</span>' : '';
+  const time = item.created_at ? new Date(item.created_at).toLocaleString('ko-KR', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const score = item.review_score ? `점수 ${item.review_score}` : '';
+  const rev = item.revision_count ? `리비전 ${item.revision_count}회` : '';
+  const meta = [item.channel, score, rev, time].filter(Boolean).join(' · ');
+
+  const title = item.title || item.keyword || '(제목 없음)';
+  const bodyPreview = _inboxPreview(item);
+
+  return `<div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:14px;${saved?'opacity:0.6':''}" id="inboxCard${idx}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${icon} ${esc(meta)} ${badge} ${savedBadge}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text-primary);cursor:pointer" onclick="inboxToggle(${idx})">${esc(title)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${saved ? '' : `<button onclick="inboxSaveOne('${esc(item.id)}')" style="padding:4px 12px;border-radius:6px;border:none;background:#22c55e;color:#fff;font-size:12px;cursor:pointer">저장</button>`}
+        <button onclick="inboxDeleteOne('${esc(item.id)}')" style="padding:4px 12px;border-radius:6px;border:none;background:var(--bg-secondary);color:var(--text-muted);font-size:12px;cursor:pointer">삭제</button>
+      </div>
+    </div>
+    <div id="inboxBody${idx}" style="display:none;margin-top:10px;padding:10px;background:var(--bg-secondary);border-radius:6px;font-size:13px;white-space:pre-wrap;max-height:300px;overflow-y:auto;color:var(--text-secondary)">${esc(bodyPreview)}</div>
+  </div>`;
+}
+
+function _inboxPreview(item) {
+  const c = item.content || {};
+  if (c.body) return c.body.substring(0, 500);
+  if (c.script) return c.script.substring(0, 500);
+  if (c.text) return c.text.substring(0, 500);
+  if (c.full_text) return c.full_text.substring(0, 500);
+  if (c.answer1) return `[질문] ${c.q_title||''}\n\n[답변1] ${(c.answer1||'').substring(0,200)}\n\n[답변2] ${(c.answer2||'').substring(0,200)}`;
+  if (c.comment) return c.comment.substring(0, 500);
+  if (c.ad_title) return `[광고] ${c.ad_title}\n${c.ad_desc||''}\n\n${(c.body||'').substring(0,300)}`;
+  return JSON.stringify(c).substring(0, 500);
+}
+
+function inboxToggle(idx) {
+  const el = document.getElementById('inboxBody' + idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function inboxSaveOne(id) {
+  try {
+    const r = await fetch(API + '/api/inbox/save-notion', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+    const data = await r.json();
+    if (data.success) { showToast('Notion 저장 완료', 'success'); inboxLoad(); }
+    else { showToast(data.error || '저장 실패', 'error'); }
+  } catch (e) { showToast('저장 에러: ' + e.message, 'error'); }
+}
+
+async function inboxSaveAll() {
+  try {
+    const r = await fetch(API + '/api/inbox/save-all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const data = await r.json();
+    showToast(`${data.saved}개 저장 완료${data.errors?.length ? ', ' + data.errors.length + '개 실패' : ''}`, data.errors?.length ? 'warning' : 'success');
+    inboxLoad();
+  } catch (e) { showToast('일괄 저장 에러: ' + e.message, 'error'); }
+}
+
+async function inboxDeleteOne(id) {
+  try {
+    await fetch(API + '/api/inbox/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+    inboxLoad();
+  } catch (e) { showToast('삭제 에러: ' + e.message, 'error'); }
+}
+
+async function inboxDeleteSaved() {
+  try {
+    const r = await fetch(API + '/api/inbox/delete-saved', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const data = await r.json();
+    showToast(`저장완료 ${data.deleted}개 정리됨`, 'success');
+    inboxLoad();
+  } catch (e) { showToast('정리 에러: ' + e.message, 'error'); }
 }
 
 // ═══════════════════════════ 목표 유입수 계산기 ═══════════════════════════

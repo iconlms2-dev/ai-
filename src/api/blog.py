@@ -16,6 +16,7 @@ from src.services.config import (
 )
 from src.services.common import error_response
 from src.services.ai_client import call_claude
+from src.services.review_service import review_and_save
 
 router = APIRouter()
 
@@ -461,6 +462,40 @@ async def blog_generate(request: Request):
                 'actual_repeat': actual_repeat, 'char_count': char_count,
                 'page_id': kw_data.get('page_id', ''),
             }
+
+            # ── 검수 단계 ──
+            yield _sse({'type': 'progress', 'msg': f'[{i+1}/{total}] {kw} — 검수 중...', 'cur': i, 'total': total})
+
+            def _regenerate_blog(content, errors):
+                fix_prompt = f"아래 블로그 원고를 수정하세요.\n\n[수정 필요 항목]\n"
+                for err in errors:
+                    fix_prompt += f"- {err}\n"
+                fix_prompt += f"\n[원고]\n제목: {content['title']}\n\n{content['body']}"
+                sys_p = "당신은 블로그 원고 수정 전문가입니다. 지적된 항목만 수정하고 나머지는 유지하세요. 수정된 본문만 출력하세요."
+                fixed_body = call_claude(sys_p, fix_prompt, channel="blog")
+                content['body'] = fixed_body.strip()
+                content['char_count'] = len(content['body'])
+                content['actual_repeat'] = content['body'].lower().count(kw.lower())
+                return content
+
+            review_result = await loop.run_in_executor(
+                executor, review_and_save,
+                "blog", result, kw, product, _regenerate_blog,
+            )
+
+            # 검수 이벤트 전달
+            for ev in review_result.get("events", []):
+                yield _sse(ev)
+
+            # 검수 결과를 result에 병합
+            result = review_result["content"]
+            result['review_status'] = review_result["status"]
+            result['review_passed'] = review_result["passed"]
+            result['revision_count'] = review_result["revision_count"]
+            result['project_id'] = review_result["project_id"]
+            result['ai_review'] = review_result.get("ai_review", {})
+            result['page_id'] = kw_data.get('page_id', '')
+
             yield _sse({'type': 'result', 'data': result, 'cur': i+1, 'total': total})
 
         yield _sse({'type': 'complete', 'total': total})
@@ -480,10 +515,12 @@ async def blog_save_notion(request: Request):
         'Content-Type': 'application/json',
         'Notion-Version': '2022-06-28',
     }
+    review_status = body.get('review_status', 'draft')
+    production_status = '승인됨' if review_status == 'approved' else '초안'
     props = {
         '제목': {'title': [{'text': {'content': body.get('title', '')}}]},
         '채널': {'select': {'name': '블로그'}},
-        '생산 상태': {'select': {'name': '초안'}},
+        '생산 상태': {'select': {'name': production_status}},
         '발행_상태': {'select': {'name': '미발행'}},
     }
     if body.get('body_summary'):
