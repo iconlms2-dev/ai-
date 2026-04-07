@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from src.services.config import executor, ELEVENLABS_API_KEY, SHORTS_DIR
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
+from src.pipeline_v2.workflow import WorkflowConfig
+from src.pipeline_v2.shorts import ShortsPipeline
 
 router = APIRouter()
 
@@ -416,3 +418,388 @@ async def shorts_download(filename: str):
     media_types = {".mp3": "audio/mpeg", ".srt": "text/srt", ".txt": "text/plain"}
     ext = os.path.splitext(safe_name)[1]
     return FileResponse(fpath, filename=safe_name, media_type=media_types.get(ext, "application/octet-stream"))
+
+
+# ── 풀 자동화 파이프라인 엔드포인트 ──────────────────────────
+
+@router.post("/run-pipeline")
+async def shorts_run_pipeline(request: Request):
+    """숏츠 풀 자동화 파이프라인 실행 (대시보드/API용).
+
+    body: {material, mode, benchmark_urls, voice_id, type, length}
+    SSE로 단계별 진행상황 스트림.
+    """
+    body = await request.json()
+    material = body.get("material", {})
+    mode = body.get("mode", "auto")
+    benchmark_urls = body.get("benchmark_urls", [])
+    voice_id = body.get("voice_id", "")
+    content_type = body.get("type", "썰형")
+    length = body.get("length", 600)
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        yield _sse({"type": "progress", "step": "init", "msg": "파이프라인 초기화..."})
+
+        # argparse.Namespace 모방
+        class Args:
+            pass
+        args = Args()
+        args.product = material.get("product", "")
+        args.target = material.get("target", "")
+        args.problem = material.get("problem", "")
+        args.emotion = material.get("emotion", "")
+        args.trust = material.get("trust", "")
+        args.cta = material.get("cta", "")
+        args.type = content_type
+        args.length = length
+        args.mode = mode
+        args.urls = benchmark_urls
+        args.voice_id = voice_id
+        args.resume = False
+
+        workflow = WorkflowConfig(
+            mode=mode,
+            voice_id=voice_id,
+            benchmark_urls=benchmark_urls,
+        )
+
+        def _run():
+            pipeline = ShortsPipeline(workflow=workflow)
+            return pipeline.run(args)
+
+        yield _sse({"type": "progress", "step": "running", "msg": "파이프라인 실행 중..."})
+        project = await loop.run_in_executor(executor, _run)
+
+        # 결과 수집
+        script = project.load_step_file("04_script", "script.json") or {}
+        review = project.load_step_file("05_review", "review.json") or {}
+        audio_meta = project.load_step_file("06_audio", "audio_meta.json") or {}
+        edit_meta = project.load_step_file("08_edit", "edit_meta.json") or {}
+        upload = project.load_step_file("09_upload", "upload.json") or {}
+
+        yield _sse({
+            "type": "result",
+            "project_id": project.project_id,
+            "project_dir": project.root,
+            "script_chars": script.get("char_count", 0),
+            "review_score": review.get("score", 0),
+            "review_passed": review.get("pass", False),
+            "duration": audio_meta.get("duration", 0),
+            "scene_count": edit_meta.get("scene_count", 0),
+            "youtube_url": upload.get("url", ""),
+            "status": project.get("status"),
+        })
+        yield _sse({"type": "complete"})
+
+      except Exception as e:
+        print(f"[shorts_run_pipeline] 에러: {e}")
+        yield _sse({"type": "error", "message": f"파이프라인 오류: {e}"})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/brief")
+async def shorts_brief(request: Request):
+    """상세 기획서 생성"""
+    body = await request.json()
+    material = body.get("material", {})
+    concept = body.get("concept", {})
+    content_type = body.get("content_type", "썰형")
+    patterns = body.get("patterns", {})
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        yield _sse({"type": "progress", "msg": "기획서 생성 중..."})
+
+        pattern_section = ""
+        if patterns and not patterns.get("skipped"):
+            hooks = patterns.get("common_hooks", [])
+            if hooks:
+                pattern_section = f"\n\n벤치마킹에서 발견된 성공 훅 패턴:\n" + "\n".join(f"- {h}" for h in hooks[:5])
+
+        sys_p = f"""너는 숏츠 영상 기획 전문가다.
+
+주어진 컨셉과 소재를 바탕으로 상세 기획서를 작성하라.
+기획서에는 다음이 포함되어야 한다:
+- 주제 및 핵심 메시지
+- 타겟 감정선 (시청 전→시청 후)
+- 구조 (훅→공감→전환→증거→결과→CTA)
+- 각 파트별 핵심 포인트
+- 톤앤매너 가이드{pattern_section}"""
+
+        usr_p = f"""컨셉: {concept.get('topic', '')}
+매력: {concept.get('appeal', '')}
+유형: {content_type}
+제품: {material.get('product', '')}
+타겟: {material.get('target', '')}
+문제: {material.get('problem', '')}
+감정: {material.get('emotion', '')}
+신뢰근거: {material.get('trust', '')}
+CTA: {material.get('cta', '')}"""
+
+        result = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+        result = result.strip()
+
+        yield _sse({"type": "brief", "text": result})
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/analyze-refs")
+async def shorts_analyze_refs(request: Request):
+    """레퍼런스 영상 AI 분석"""
+    body = await request.json()
+    references_text = body.get("references_text", "")
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        yield _sse({"type": "progress", "msg": "레퍼런스 분석 중..."})
+
+        sys_p = """너는 숏츠 영상 분석 전문가다.
+주어진 레퍼런스 영상들을 분석하여 다음을 JSON으로 출력하라:
+{
+  "success_factors": ["성공 요인 1", "성공 요인 2", ...],
+  "hook_patterns": ["훅 패턴 1", "훅 패턴 2", ...],
+  "structure_patterns": ["구조 패턴 1", ...],
+  "tone": "전체적인 톤 설명"
+}"""
+
+        result = await loop.run_in_executor(executor, call_claude, sys_p, references_text)
+        result = result.strip()
+
+        # JSON 파싱 시도
+        try:
+            import re as _re
+            json_match = _re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                yield _sse({"type": "analysis", "text": result, **parsed})
+            else:
+                yield _sse({"type": "analysis", "text": result})
+        except (json.JSONDecodeError, ValueError):
+            yield _sse({"type": "analysis", "text": result})
+
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/extract-patterns")
+async def shorts_extract_patterns(request: Request):
+    """분석 결과에서 공통 패턴 추출"""
+    body = await request.json()
+    analyses_text = body.get("analyses_text", "")
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        sys_p = """분석 결과들에서 공통 패턴을 추출하여 JSON으로 출력하라:
+{
+  "common_hooks": ["공통 훅 1", ...],
+  "common_structure": "공통 구조 설명",
+  "tone_guide": "톤 가이드",
+  "key_elements": ["핵심 요소 1", ...]
+}"""
+        result = await loop.run_in_executor(executor, call_claude, sys_p, analyses_text)
+        result = result.strip()
+
+        try:
+            import re as _re
+            json_match = _re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                yield _sse({"type": "patterns", **parsed})
+            else:
+                yield _sse({"type": "patterns", "raw": result})
+        except (json.JSONDecodeError, ValueError):
+            yield _sse({"type": "patterns", "raw": result})
+
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/storyboard")
+async def shorts_storyboard(request: Request):
+    """스토리보드 (씬 설계)"""
+    body = await request.json()
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        yield _sse({"type": "progress", "msg": "스토리보드 설계 중..."})
+
+        brief = body.get("brief", "")
+        script = body.get("script", "")
+        sentences = body.get("sentences", [])
+        expected_scenes = body.get("expected_scenes", 8)
+        total_duration = body.get("total_duration", 60)
+
+        sys_p = f"""너는 숏츠 영상 스토리보드 전문가다.
+대본과 문장 타이밍을 기반으로 {expected_scenes}개 내외의 씬을 설계하라.
+각 씬은 6~7초 단위로 나누되, 문장 경계에 맞춰야 한다.
+전체 영상 길이: {total_duration:.1f}초
+
+출력 형식 (JSON):
+{{
+  "scenes": [
+    {{
+      "start": 0.0,
+      "end": 6.5,
+      "description": "씬 설명",
+      "mood": "dramatic/hopeful/neutral/tense/warm",
+      "camera": "zoom_in/zoom_out/pan_left/pan_right/static",
+      "text_overlay": "화면에 표시할 텍스트 (없으면 빈 문자열)"
+    }},
+    ...
+  ]
+}}"""
+
+        sentences_text = "\n".join(
+            f"[{s.get('start', 0):.1f}~{s.get('end', 0):.1f}] {s.get('text', '')}"
+            for s in sentences
+        )
+        usr_p = f"기획서:\n{brief[:500]}\n\n대본:\n{script[:1000]}\n\n문장 타이밍:\n{sentences_text}"
+
+        result = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+        result = result.strip()
+
+        try:
+            import re as _re
+            json_match = _re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                yield _sse({"type": "storyboard", **parsed})
+            else:
+                yield _sse({"type": "storyboard", "raw": result})
+        except (json.JSONDecodeError, ValueError):
+            yield _sse({"type": "storyboard", "raw": result})
+
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/image-prompts")
+async def shorts_image_prompts(request: Request):
+    """씬별 이미지 생성 프롬프트"""
+    body = await request.json()
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        scenes = body.get("scenes", [])
+        brief = body.get("brief", "")
+        art_style = body.get("art_style", "realistic")
+
+        scenes_desc = "\n".join(
+            f"씬 {s['index']}: [{s.get('mood', '')}] {s.get('description', '')[:100]}"
+            for s in scenes
+        )
+
+        sys_p = f"""너는 AI 이미지 생성 프롬프트 전문가다.
+각 씬에 맞는 이미지 생성 프롬프트를 영어로 작성하라.
+아트 스타일: {art_style}
+형식: 9:16 세로 (숏츠)
+출력: JSON 배열 ["prompt1", "prompt2", ...]"""
+
+        usr_p = f"기획서:\n{brief[:300]}\n\n씬 목록:\n{scenes_desc}"
+
+        result = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+        result = result.strip()
+
+        try:
+            import re as _re
+            json_match = _re.search(r'\[[\s\S]*\]', result)
+            if json_match:
+                prompts = json.loads(json_match.group())
+                yield _sse({"type": "prompts", "prompts": prompts})
+            else:
+                yield _sse({"type": "prompts", "raw": result})
+        except (json.JSONDecodeError, ValueError):
+            yield _sse({"type": "prompts", "raw": result})
+
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/youtube-meta")
+async def shorts_youtube_meta(request: Request):
+    """YouTube 업로드 메타데이터 생성"""
+    body = await request.json()
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        brief = body.get("brief", "")
+        script = body.get("script", "")
+        hooks = body.get("hooks", [])
+
+        sys_p = """숏츠 영상의 YouTube 메타데이터를 생성하라.
+JSON 형식:
+{
+  "title": "영상 제목 (60자 이내, 매력적인 훅)",
+  "description": "설명 (해시태그 포함)",
+  "tags": ["태그1", "태그2", ...],
+  "category_id": "22"
+}"""
+
+        hooks_text = "\n".join(hooks[:5]) if hooks else ""
+        usr_p = f"기획서:\n{brief[:300]}\n\n대본:\n{script[:300]}\n\n훅 후보:\n{hooks_text}"
+
+        result = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+        result = result.strip()
+
+        try:
+            import re as _re
+            json_match = _re.search(r'\{[\s\S]*\}', result)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                yield _sse({"type": "meta", **parsed})
+            else:
+                yield _sse({"type": "meta", "raw": result})
+        except (json.JSONDecodeError, ValueError):
+            yield _sse({"type": "meta", "raw": result})
+
+        yield _sse({"type": "complete"})
+      except Exception as e:
+        yield _sse({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

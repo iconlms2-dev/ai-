@@ -295,12 +295,21 @@ def _build_args_str(channel_key: str, args: dict) -> str:
     product = args.get("product", {})
     base = ""
     if channel_key == "shorts":
+        mode = args.get("mode", "auto")
+        urls = args.get("urls", [])
+        voice_id = args.get("voice_id", "")
+        urls_str = " ".join(f'"{u}"' for u in urls) if urls else ""
         base = (f'--product "{product.get("name", "")}" '
                 f'--target "{product.get("target", "")}" '
                 f'--problem "{product.get("problem", "")}" '
                 f'--emotion "{product.get("emotion", "")}" '
                 f'--trust "{product.get("trust", "")}" '
-                f'--cta "{product.get("cta", "")}"')
+                f'--cta "{product.get("cta", "")}" '
+                f'--mode {mode}')
+        if urls_str:
+            base += f" --urls {urls_str}"
+        if voice_id:
+            base += f' --voice-id "{voice_id}"'
     elif channel_key in ("blog", "cafe-seo", "jisikin", "tiktok", "powercontent"):
         keyword = args.get("keyword", "")
         base = (f'--keyword "{keyword}" '

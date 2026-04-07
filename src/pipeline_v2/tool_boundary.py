@@ -12,6 +12,9 @@ AGENT_PERMISSIONS = {
     "pattern-extractor": {"read": True, "write": False, "execute": False},
     "keyword-analyzer": {"read": True, "write": False, "execute": False},
     "video-analyst": {"read": True, "write": False, "execute": False},
+    "sentence-splitter": {"read": True, "write": True, "execute": False},
+    "storyboard-architect": {"read": True, "write": True, "execute": False},
+    "storyboard-prompter": {"read": True, "write": True, "execute": False},
 
     # 채널별 strategist (생성전용 — 전략 텍스트만 생성)
     **{f"{ch}-strategist": {"read": True, "write": True, "execute": False}

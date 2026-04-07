@@ -3819,6 +3819,7 @@ const SHORTS_PRESETS = {
 let SHORTS = {
   voices: [], selectedVoice: '', abortCtrl: null, isRunning: false,
   currentPreset: 'male_v1', currentType: '', topics: '', script: '', hooks: '', step: 1,
+  pipelineMode: 'auto', benchmarkUrls: '',
 };
 
 function renderShorts(mc) {
@@ -3901,6 +3902,27 @@ function renderShorts(mc) {
       </div>
       <button class="ka-btn ka-btn-primary" id="shortsTTSBtn" onclick="shortsGenTTS()">🔊 음성 + 자막 생성</button>
       <div id="shortsTTSResult" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Step 7: 풀 자동화 파이프라인 -->
+    <div class="ka-section" style="margin-top:16px;border-top:2px solid var(--border);padding-top:16px">
+      <div class="ka-section-title">🚀 풀 자동화 파이프라인 (10단계)</div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">벤치마킹→전략→기획→대본→검수→TTS→비주얼→CapCut→업로드 전 과정 자동화. 수동: 렌더링 1곳만.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;color:var(--text-secondary)">모드:</label>
+        <select class="ka-input" id="shortsPipelineMode" style="width:100px" onchange="SHORTS.pipelineMode=this.value">
+          <option value="auto" selected>Auto</option>
+          <option value="ask">Ask</option>
+        </select>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">벤치마킹 YouTube URL (줄바꿈으로 구분, 선택)</label>
+        <textarea class="ka-input" id="shortsBenchmarkUrls" rows="3" placeholder="https://youtube.com/shorts/xxx&#10;https://youtube.com/shorts/yyy" style="width:100%;font-size:12px" oninput="SHORTS.benchmarkUrls=this.value"></textarea>
+      </div>
+      <button class="ka-btn ka-btn-primary" id="shortsPipelineBtn" onclick="shortsRunPipeline()" style="width:100%;padding:12px;font-size:14px">🚀 풀 자동화 실행</button>
+      <div id="shortsPipelineResult" class="ka-hidden" style="margin-top:12px">
+        <div id="shortsPipelineStatus" style="font-size:13px;white-space:pre-wrap"></div>
+      </div>
     </div>
 
     <!-- 진행 상태 -->
@@ -4172,6 +4194,68 @@ async function _shortsReadSSE(resp, expectType) {
     }
   }
   return result;
+}
+
+// ── 숏츠 풀 자동화 파이프라인 ──
+async function shortsRunPipeline() {
+  const btn = document.getElementById('shortsPipelineBtn');
+  const resultDiv = document.getElementById('shortsPipelineResult');
+  const statusDiv = document.getElementById('shortsPipelineStatus');
+  btn.disabled = true; btn.textContent = '⏳ 파이프라인 실행 중...';
+  resultDiv.classList.remove('ka-hidden');
+  statusDiv.textContent = '초기화 중...\n';
+
+  const material = {
+    product: (document.getElementById('shortsMProduct')||{}).value || '',
+    target: (document.getElementById('shortsMTarget')||{}).value || '',
+    problem: (document.getElementById('shortsMProblem')||{}).value || '',
+    emotion: (document.getElementById('shortsMEmotion')||{}).value || '',
+    trust: (document.getElementById('shortsMTrust')||{}).value || '',
+    cta: (document.getElementById('shortsMCta')||{}).value || '',
+  };
+  const mode = (document.getElementById('shortsPipelineMode')||{}).value || 'auto';
+  const urlsRaw = (document.getElementById('shortsBenchmarkUrls')||{}).value || '';
+  const urls = urlsRaw.split('\n').map(u=>u.trim()).filter(u=>u);
+  const length = parseInt((document.getElementById('shortsMLength')||{}).value || '600');
+
+  try {
+    const resp = await fetch(`${API}/api/shorts/run-pipeline`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({material, mode, benchmark_urls: urls, type: SHORTS.currentType||'썰형', length}),
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const parts = buf.split('\n\n'); buf = parts.pop();
+      for (const p of parts) {
+        if (!p.startsWith('data: ')) continue;
+        let ev; try { ev = JSON.parse(p.substring(6)); } catch(_) { continue; }
+        if (ev.type === 'progress') {
+          statusDiv.textContent += `[${ev.step||''}] ${ev.msg}\n`;
+        } else if (ev.type === 'result') {
+          statusDiv.textContent += `\n✅ 파이프라인 완료!\n`;
+          statusDiv.textContent += `프로젝트: ${ev.project_id}\n`;
+          statusDiv.textContent += `대본: ${ev.script_chars}자 | 검수: ${ev.review_score}점\n`;
+          statusDiv.textContent += `음성: ${(ev.duration||0).toFixed(1)}초 | 씬: ${ev.scene_count}개\n`;
+          if (ev.youtube_url) statusDiv.textContent += `YouTube: ${ev.youtube_url}\n`;
+          statusDiv.textContent += `상태: ${ev.status}\n`;
+        } else if (ev.type === 'error') {
+          statusDiv.textContent += `\n❌ 오류: ${ev.message}\n`;
+        } else if (ev.type === 'complete') {
+          statusDiv.textContent += `\n--- 완료 ---\n`;
+        }
+        statusDiv.scrollTop = statusDiv.scrollHeight;
+      }
+    }
+  } catch(e) {
+    statusDiv.textContent += `\n❌ 네트워크 오류: ${e.message}\n`;
+  }
+  btn.disabled = false; btn.textContent = '🚀 풀 자동화 실행';
 }
 
 // ═══════════════════════════ COMMUNITY ═══════════════════════════
