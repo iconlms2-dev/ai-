@@ -81,8 +81,8 @@ def _build_pc_ad_prompt(keyword, appeal, buying_thing, product, hooking_type, fo
 - 레퍼런스 후킹 방식: %s
 
 ## 출력 규격
-1. 제목: 최대 28자 (공백 포함), 메인 키워드 포함
-2. 설명: 최대 110자 (공백 포함), 궁금증 유발 + 혜택/근거/가치
+1. 제목: 최대 28자 (공백 포함), 메인 키워드 반드시 포함 (문장이 다소 어색하더라도 반드시 삽입)
+2. 설명: 최대 110자 (공백 포함), 메인 키워드 반드시 포함, 궁금증 유발 + 혜택/근거/가치
 
 제목 유형 (레퍼런스와 같은 유형):
 - 부정편향: "절대 사면 안 되는 OOO", "효과 없었던 진짜 이유"
@@ -94,10 +94,12 @@ def _build_pc_ad_prompt(keyword, appeal, buying_thing, product, hooking_type, fo
 설명: (설명)
 
 %s
-금지: 허위·과장, 근거 없는 효능, 낚시""" % (
+## 필수 규칙
+- 제목과 도입부를 소구점(%s)의 결핍 언어로 시작한다. 고객이 "이건 완전 내 얘기잖아?"라고 느끼게 해야 한다.
+- 금지: 허위·과장, 근거 없는 효능, 낚시""" % (
         keyword, appeal, buying_thing,
         product.get('name',''), product.get('ingredients',''), product.get('usp',''),
-        hooking_type, forbidden
+        hooking_type, forbidden, appeal
     )
     return system, user
 
@@ -109,6 +111,7 @@ def _build_pc_body_prompt(keyword, stage, appeal, buying_thing, deficit_level, p
         template = """[템플릿 A -- 구매여정 0~3]
 
 1막 오프닝: 문제를 '심각한 질병'으로 격상
+- ⛔ 도입부에서 제품 이야기를 절대 먼저 꺼내지 않는다. 고객의 결핍부터 파고든다.
 - BA 카모플라주: 건강정보/전문가 분석 포맷으로 진입
 - BA 점진화: 독자가 동의하는 증상에서 출발, 동의 3~5회 축적
 - 결핍 마케팅: 방치 시 미래를 구체적으로 묘사
@@ -122,11 +125,13 @@ def _build_pc_body_prompt(keyword, stage, appeal, buying_thing, deficit_level, p
 3막 클로징: 첫 번째 선택지 되기
 - BA 메커니제이션: 작동 원리를 판매 언어로
 - BA 재정의 가격축소: "하루 OOO원"
+- 위장 진정성: "저는 광고 목적이 아닌, 진짜 효과 본 정보를 공유하고 싶었을 뿐입니다" 식으로 상업적 의도 방어벽을 무너뜨린다
 - CTA: "현명한 첫걸음을 내딛으세요" + [CTA: %s]""" % product.get('url','')
     else:
         template = """[템플릿 B -- 구매여정 4~5]
 
 1막 오프닝: 잘못된 선택의 위험성 경고
+- ⛔ 도입부에서 제품 이야기를 절대 먼저 꺼내지 않는다. 잘못된 선택의 위험부터 경고한다.
 - BA 카모플라주: "직접 써보고 비교한 분석가" 포맷
 - BA 점진화: 효과 없는 제품에 돈/시간 낭비가 진짜 문제
 
@@ -136,6 +141,7 @@ def _build_pc_body_prompt(keyword, stage, appeal, buying_thing, deficit_level, p
 
 3막 클로징: 즉시 구매 유도
 - FOMO + 가성비 증명
+- 위장 진정성: "저는 광고 목적이 아닌, 진짜 효과 본 정보를 공유하고 싶었을 뿐입니다" 식으로 상업적 의도 방어벽을 무너뜨린다
 - CTA: "계속 돈을 낭비하시겠습니까?" + [CTA: %s]""" % product.get('url','')
 
     user = """아래 조건으로 파워컨텐츠 랜딩 본문을 작성해.
