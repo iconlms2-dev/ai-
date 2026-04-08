@@ -80,7 +80,8 @@ def _analyze_top_for_blog(keyword):
             'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
             'char_count': round(sum(r.get('char_count', 0) for r in results) / len(results))
         }
-    except Exception:
+    except Exception as e:
+        print(f"[_analyze_top_for_blog] {e}")
         return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
 
 

@@ -24,23 +24,33 @@ router = APIRouter()
 _viral_lock = threading.RLock()
 
 
+def _viral_load_raw():
+    """lock 없이 파일 읽기 — 반드시 외부에서 _viral_lock을 잡고 호출"""
+    if os.path.exists(VIRAL_ACCOUNTS_FILE):
+        try:
+            with open(VIRAL_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {'accounts': []}
+
+
+def _viral_save_raw(data):
+    """lock 없이 파일 쓰기 — 반드시 외부에서 _viral_lock을 잡고 호출"""
+    with open(VIRAL_ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 def _viral_load_accounts():
-    """계정 목록 로드"""
+    """계정 목록 로드 (lock 포함 — 단독 호출용)"""
     with _viral_lock:
-        if os.path.exists(VIRAL_ACCOUNTS_FILE):
-            try:
-                with open(VIRAL_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, OSError):
-                pass
-        return {'accounts': []}
+        return _viral_load_raw()
 
 
 def _viral_save_accounts(data):
-    """계정 목록 저장"""
+    """계정 목록 저장 (lock 포함 — 단독 호출용)"""
     with _viral_lock:
-        with open(VIRAL_ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        _viral_save_raw(data)
 
 
 def _viral_get_account(account_id):
@@ -86,30 +96,31 @@ def _viral_check_product_limit(account_id, product_name):
 
 
 def _viral_record_activity(account_id, stage, product_name=''):
-    """활동 기록 업데이트"""
-    data = _viral_load_accounts()
-    for acc in data['accounts']:
-        if acc['id'] == account_id:
-            if stage == 1:
-                acc['stage1_count'] = acc.get('stage1_count', 0) + 1
-            elif stage == 2:
-                acc['stage2_count'] = acc.get('stage2_count', 0) + 1
-            elif stage == 3:
-                acc['stage3_count'] = acc.get('stage3_count', 0) + 1
-                if product_name:
-                    mentions = acc.get('product_mentions', {})
-                    mentions[product_name] = mentions.get(product_name, 0) + 1
-                    acc['product_mentions'] = mentions
-            acc['last_activity'] = time.strftime('%Y-%m-%d %H:%M')
-            history = acc.get('history', [])
-            history.append({
-                'stage': stage,
-                'product': product_name,
-                'date': time.strftime('%Y-%m-%d %H:%M'),
-            })
-            acc['history'] = history[-100:]  # 최근 100개만 유지
-            break
-    _viral_save_accounts(data)
+    """활동 기록 업데이트 (lock으로 전체 구간 보호)"""
+    with _viral_lock:
+        data = _viral_load_raw()
+        for acc in data['accounts']:
+            if acc['id'] == account_id:
+                if stage == 1:
+                    acc['stage1_count'] = acc.get('stage1_count', 0) + 1
+                elif stage == 2:
+                    acc['stage2_count'] = acc.get('stage2_count', 0) + 1
+                elif stage == 3:
+                    acc['stage3_count'] = acc.get('stage3_count', 0) + 1
+                    if product_name:
+                        mentions = acc.get('product_mentions', {})
+                        mentions[product_name] = mentions.get(product_name, 0) + 1
+                        acc['product_mentions'] = mentions
+                acc['last_activity'] = time.strftime('%Y-%m-%d %H:%M')
+                history = acc.get('history', [])
+                history.append({
+                    'stage': stage,
+                    'product': product_name,
+                    'date': time.strftime('%Y-%m-%d %H:%M'),
+                })
+                acc['history'] = history[-100:]
+                break
+        _viral_save_raw(data)
 
 
 # ── 계정 관리 엔드포인트 ──
@@ -409,71 +420,72 @@ async def viral_generate(request: Request):
         return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
 
     async def generate():
-      try:
-        loop = asyncio.get_running_loop()
-        total_steps = set_count * 3
+        try:
+            loop = asyncio.get_running_loop()
+            total_steps = set_count * 3
 
-        # 계정 선택 시: 3단계 실행 전 체크
-        if account_id:
-            ready = _viral_check_ready(account_id)
-            if not ready['ready']:
-                yield _sse({'type': 'warning', 'msg': '⚠️ 계정 상태 경고: ' + ' / '.join(ready.get('errors', []))})
-            if product_name:
-                prod_check = _viral_check_product_limit(account_id, product_name)
-                if not prod_check['allowed']:
-                    yield _sse({'type': 'error', 'message': '🚫 ' + prod_check['reason']})
+            # 계정 선택 시: 3단계 실행 전 체크
+            if account_id:
+                ready = _viral_check_ready(account_id)
+                if not ready['ready']:
+                    yield _sse({'type': 'error', 'message': '🚫 계정 상태 미충족: ' + ' / '.join(ready.get('errors', []))})
                     return
+                if product_name:
+                    prod_check = _viral_check_product_limit(account_id, product_name)
+                    if not prod_check['allowed']:
+                        yield _sse({'type': 'error', 'message': '🚫 ' + prod_check['reason']})
+                        return
 
-        for s in range(set_count):
-            step_base = s * 3
+            for s in range(set_count):
+                step_base = s * 3
 
-            # 1단계: 일상글
-            yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 1단계 일상글 생성 중...' % (s+1, set_count), 'cur': step_base, 'total': total_steps})
-            sys1, usr1 = _build_viral_stage1_prompt(category, product.get('target', ''), '')
-            raw1 = await loop.run_in_executor(executor, call_claude, sys1, usr1)
-            s1 = _parse_viral_output(raw1)
+                # 1단계: 일상글
+                yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 1단계 일상글 생성 중...' % (s+1, set_count), 'cur': step_base, 'total': total_steps})
+                sys1, usr1 = _build_viral_stage1_prompt(category, product.get('target', ''), '')
+                raw1 = await loop.run_in_executor(executor, call_claude, sys1, usr1)
+                s1 = _parse_viral_output(raw1)
 
-            # 2단계: 대화침투글
-            yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 2단계 대화침투글 생성 중...' % (s+1, set_count), 'cur': step_base+1, 'total': total_steps})
-            sys2, usr2 = _build_viral_stage2_prompt(category, target_concern, product_category)
-            raw2 = await loop.run_in_executor(executor, call_claude, sys2, usr2)
-            s2 = _parse_viral_output(raw2)
+                # 2단계: 대화침투글
+                yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 2단계 대화침투글 생성 중...' % (s+1, set_count), 'cur': step_base+1, 'total': total_steps})
+                sys2, usr2 = _build_viral_stage2_prompt(category, target_concern, product_category)
+                raw2 = await loop.run_in_executor(executor, call_claude, sys2, usr2)
+                s2 = _parse_viral_output(raw2)
 
-            # 3단계: 제품인지글 + 댓글
-            yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 3단계 제품인지글+댓글 생성 중...' % (s+1, set_count), 'cur': step_base+2, 'total': total_steps})
-            sys3, usr3 = _build_viral_stage3_prompt(category, target_concern, brand_keyword, product_name, usp, ingredients, product_category)
-            raw3 = await loop.run_in_executor(executor, call_claude, sys3, usr3)
-            s3 = _parse_viral_stage3(raw3)
+                # 3단계: 제품인지글 + 댓글
+                yield _sse({'type': 'progress', 'msg': '[세트 %d/%d] 3단계 제품인지글+댓글 생성 중...' % (s+1, set_count), 'cur': step_base+2, 'total': total_steps})
+                sys3, usr3 = _build_viral_stage3_prompt(category, target_concern, brand_keyword, product_name, usp, ingredients, product_category)
+                raw3 = await loop.run_in_executor(executor, call_claude, sys3, usr3)
+                s3 = _parse_viral_stage3(raw3)
 
-            result = {
-                'set_num': s + 1,
-                'stage1': s1,
-                'stage2': s2,
-                'stage3': s3,
-            }
+                result = {
+                    'set_num': s + 1,
+                    'stage1': s1,
+                    'stage2': s2,
+                    'stage3': s3,
+                }
 
-            # ── 검수 단계 ──
-            yield _sse({'type': 'progress', 'msg': f'[세트 {s+1}/{set_count}] 검수 중...', 'cur': step_base+2, 'total': total_steps})
-            review_result = await loop.run_in_executor(
-                executor, review_and_save, "cafe-viral", result, "",
-            )
-            for ev in review_result.get("events", []):
-                yield _sse(ev)
-            result['review_status'] = review_result["status"]
-            result['review_passed'] = review_result["passed"]
+                # ── 검수 단계 ──
+                yield _sse({'type': 'progress', 'msg': f'[세트 {s+1}/{set_count}] 검수 중...', 'cur': step_base+2, 'total': total_steps})
+                review_result = await loop.run_in_executor(
+                    executor, review_and_save, "cafe-viral", result, "",
+                )
+                for ev in review_result.get("events", []):
+                    yield _sse(ev)
+                result['review_status'] = review_result["status"]
+                result['review_passed'] = review_result["passed"]
 
-            # 계정 활동 기록 (검수 통과 시에만)
-            if account_id and review_result.get("passed", False):
-                _viral_record_activity(account_id, 1)
-                _viral_record_activity(account_id, 2)
-                _viral_record_activity(account_id, 3, product_name)
+                # 계정 활동 기록 (검수 통과 시에만)
+                if account_id and review_result.get("passed", False):
+                    _viral_record_activity(account_id, 1)
+                    _viral_record_activity(account_id, 2)
+                    _viral_record_activity(account_id, 3, product_name)
 
-            yield _sse({'type': 'result', 'data': result, 'cur': step_base+3, 'total': total_steps})
+                yield _sse({'type': 'result', 'data': result, 'cur': step_base+3, 'total': total_steps})
 
-        yield _sse({'type': 'complete', 'total': set_count})
-      except Exception as e:
-        print(f"[viral_generate] 에러: {e}")
-        yield _sse({'type': 'error', 'message': f'카페바이럴 생성 중 오류: {e}'})
+            yield _sse({'type': 'complete', 'total': set_count})
+        except Exception as e:
+            print(f"[viral_generate] 에러: {e}")
+            yield _sse({'type': 'error', 'message': f'카페바이럴 생성 중 오류: {e}'})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -510,40 +522,50 @@ async def viral_generate_stage(request: Request):
         return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
 
     async def generate():
-      try:
-        loop = asyncio.get_running_loop()
-        for i in range(count):
-            if stage == 1:
-                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 일상글 생성 중...'})
-                sys_p, usr_p = _build_viral_stage1_prompt(category, product.get('target', ''), '')
-                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
-                result = _parse_viral_output(raw)
-                _viral_record_activity(account_id, 1)
-                yield _sse({'type': 'result', 'data': {'stage': 1, 'num': i+1, **result}})
+        try:
+            loop = asyncio.get_running_loop()
+            for i in range(count):
+                if stage == 1:
+                    yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 일상글 생성 중...'})
+                    sys_p, usr_p = _build_viral_stage1_prompt(category, product.get('target', ''), '')
+                    raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                    result = _parse_viral_output(raw)
+                    _viral_record_activity(account_id, 1)
+                    yield _sse({'type': 'result', 'data': {'stage': 1, 'num': i+1, **result}})
 
-            elif stage == 2:
-                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 고민글 생성 중...'})
-                sys_p, usr_p = _build_viral_stage2_prompt(category, product.get('target_concern', ''), product.get('product_category', ''))
-                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
-                result = _parse_viral_output(raw)
-                _viral_record_activity(account_id, 2)
-                yield _sse({'type': 'result', 'data': {'stage': 2, 'num': i+1, **result}})
+                elif stage == 2:
+                    yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 고민글 생성 중...'})
+                    sys_p, usr_p = _build_viral_stage2_prompt(category, product.get('target_concern', ''), product.get('product_category', ''))
+                    raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                    result = _parse_viral_output(raw)
+                    _viral_record_activity(account_id, 2)
+                    yield _sse({'type': 'result', 'data': {'stage': 2, 'num': i+1, **result}})
 
-            elif stage == 3:
-                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 침투글+댓글 생성 중...'})
-                sys_p, usr_p = _build_viral_stage3_prompt(
-                    category, product.get('target_concern', ''),
-                    product.get('brand_keyword', ''), product.get('name', ''),
-                    product.get('usp', ''), product.get('ingredients', ''),
-                    product.get('product_category', ''))
-                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
-                result = _parse_viral_stage3(raw)
-                _viral_record_activity(account_id, 3, product.get('name', ''))
-                yield _sse({'type': 'result', 'data': {'stage': 3, 'num': i+1, **result}})
+                elif stage == 3:
+                    yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 침투글+댓글 생성 중...'})
+                    sys_p, usr_p = _build_viral_stage3_prompt(
+                        category, product.get('target_concern', ''),
+                        product.get('brand_keyword', ''), product.get('name', ''),
+                        product.get('usp', ''), product.get('ingredients', ''),
+                        product.get('product_category', ''))
+                    raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                    result = _parse_viral_stage3(raw)
+                    # 검수 후 통과 시에만 활동 기록
+                    yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 검수 중...'})
+                    review_result = await loop.run_in_executor(
+                        executor, review_and_save, "cafe-viral", {'stage3': result}, "",
+                    )
+                    for ev in review_result.get("events", []):
+                        yield _sse(ev)
+                    result['review_status'] = review_result["status"]
+                    result['review_passed'] = review_result["passed"]
+                    if review_result.get("passed", False):
+                        _viral_record_activity(account_id, 3, product.get('name', ''))
+                    yield _sse({'type': 'result', 'data': {'stage': 3, 'num': i+1, **result}})
 
-        yield _sse({'type': 'complete', 'total': count})
-      except Exception as e:
-        yield _sse({'type': 'error', 'message': str(e)})
+            yield _sse({'type': 'complete', 'total': count})
+        except Exception as e:
+            yield _sse({'type': 'error', 'message': str(e)})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -583,14 +605,15 @@ async def viral_create_plan(acc_id: str, request: Request):
         {'day': 14, 'date': (start + timedelta(days=13)).strftime('%Y-%m-%d'), 'task': '일상글 1개 (이력 관리)', 'stage': 1, 'count': 1},
     ]
 
-    # 계정에 플랜 저장
-    data = _viral_load_accounts()
-    for a in data['accounts']:
-        if a['id'] == acc_id:
-            a['plan'] = plan
-            a['plan_start'] = start_date
-            break
-    _viral_save_accounts(data)
+    # 계정에 플랜 저장 (lock으로 전체 구간 보호)
+    with _viral_lock:
+        data = _viral_load_raw()
+        for a in data['accounts']:
+            if a['id'] == acc_id:
+                a['plan'] = plan
+                a['plan_start'] = start_date
+                break
+        _viral_save_raw(data)
 
     return {'ok': True, 'plan': plan, 'account_id': acc_id}
 

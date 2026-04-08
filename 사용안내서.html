@@ -630,6 +630,21 @@
 
 <div class="warn-box">3단계를 같은 날에 모두 올리면 안 됩니다! 각 단계 사이에 최소 3일 간격을 두세요. 배포 일정 관리에서 자동으로 타이밍을 계산해줍니다.</div>
 
+<h3>계정 관리</h3>
+<p>카페바이럴은 여러 계정으로 운영합니다. 대시보드의 <strong>"👤 계정 관리"</strong> 탭에서 계정을 등록·삭제하고 상태를 추적합니다.</p>
+<div class="step-list">
+  <div class="step-item"><div class="step-content"><strong>계정 추가</strong><p>"+ 추가" 버튼 > 닉네임, 카페 이름, 네이버 ID를 입력합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>상태 확인</strong><p>각 계정의 일상글/고민글/침투글 수, 제품 언급 횟수가 자동 추적됩니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>3단계 잠금 해제</strong><p>일상글 5개 + 고민글 1개 이상이어야 3단계(침투글)가 잠금 해제됩니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>제품 언급 한도</strong><p>한 계정당 같은 제품 최대 2회까지만 언급할 수 있습니다. 초과 시 자동 차단됩니다.</p></div></div>
+</div>
+
+<h3>단계별 개별 생성</h3>
+<p><strong>"🎯 단계별 생성"</strong> 탭에서 계정을 선택한 뒤, 1단계/2단계/3단계를 각각 따로 생성할 수 있습니다. 생성 수도 지정 가능합니다.</p>
+
+<h3>2주 플랜</h3>
+<p>단계별 생성 탭에서 <strong>"📅 플랜 생성"</strong>을 클릭하면, 2주간의 일정(일상글→댓글교류→고민글→침투글)이 자동 생성됩니다. 일정에 맞춰 단계별로 글을 올리세요.</p>
+
 
 <!-- ══════════════════════════════════════════════ -->
 <h1 id="prog-jisikin">9. 지식인</h1>
@@ -1089,6 +1104,15 @@
   <div class="step-item"><div class="step-content"><strong>커뮤니티 선택</strong><p>위 9개 중 타겟 커뮤니티를 선택합니다.</p></div></div>
   <div class="step-item"><div class="step-content"><strong>전략 선택</strong><p>① 고민공감+체험후기형 ② 추천요청형(낚시) ③ 비교리뷰형 ④ 자기제품까기(역발상) 중 선택합니다.</p></div></div>
   <div class="step-item"><div class="step-content"><strong>"생성" 클릭</strong><p>해당 커뮤니티 톤에 맞는 침투글 + 자작댓글 1~2개가 생성됩니다.</p></div></div>
+</div>
+
+<h3>계정 관리</h3>
+<p>커뮤니티 침투도 계정 농사가 필수입니다. <strong>"👤 계정 관리"</strong> 탭에서 계정을 관리합니다.</p>
+<div class="step-list">
+  <div class="step-item"><div class="step-content"><strong>계정 추가</strong><p>닉네임, 커뮤니티명, 계정 ID, 일반 활동 시작일을 입력합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>숙성 기간 (2주)</strong><p>일반 활동 시작일로부터 14일이 지나야 침투글 작성이 가능합니다. 그 전에는 일반적인 커뮤니티 활동(댓글, 일상글)만 합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>월 작성 한도 (3개)</strong><p>한 계정당 월 최대 3개의 침투글만 작성할 수 있습니다. 초과 시 자동 경고됩니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>삭제 기록 추적</strong><p>커뮤니티에서 글이 삭제된 경우 기록하여 계정 건강도를 관리합니다.</p></div></div>
 </div>
 
 
@@ -1776,6 +1800,17 @@
 <div class="tip-box">코드가 크게 바뀔 때만 Gem에 파일을 재업로드하세요. 간단한 변경은 프롬프트만으로 충분합니다.</div>
 
 <!-- ══════════════════════════════════════════════ -->
+<h2>프롬프트 구조도 뷰어</h2>
+<p>각 채널의 AI 프롬프트(시스템/유저) 전문을 확인할 수 있는 도구입니다. 대시보드와 별도 페이지로 제공됩니다.</p>
+<div class="step-list">
+  <div class="step-item"><div class="step-content"><strong>접속</strong><p>브라우저에서 <code>http://서버주소:포트/prompt-viewer</code>로 접속합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>채널 선택</strong><p>블로그, 카페SEO, 카페바이럴, 지식인, 유튜브, 커뮤니티, 파워컨텐츠 중 선택합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>프롬프트 확인</strong><p>각 단계(분석/제목/본문/댓글 등)의 시스템 프롬프트와 유저 프롬프트 전문을 확인할 수 있습니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>claude.ai용 복사</strong><p>"복사" 버튼으로 프롬프트를 클립보드에 복사하여 claude.ai에서 직접 테스트할 수 있습니다.</p></div></div>
+</div>
+<div class="tip-box">프롬프트 뷰어는 프롬프트 수정이 필요한지 판단할 때, 또는 멘토 가이드라인과 비교할 때 사용합니다.</div>
+
+
 <h1 id="appendix">23. 부록</h1>
 <!-- ══════════════════════════════════════════════ -->
 
