@@ -87,16 +87,12 @@ async def batch_keywords():
 @router.post("/generate")
 async def batch_generate(request: Request):
     """일괄 생성: 키워드별 배정 채널에 맞게 순차 생성 + 자동 Notion 저장"""
-    # 채널별 프롬프트 빌더는 server.py에 남아있음 — 추후 서비스 레이어로 이동 시 임포트 경로 변경
-    from server import (
-        _prompt_load_overrides,
-        _build_blog_title_prompt, _build_blog_body_prompt,
-        _build_cafe_title_prompt, _build_cafe_body_prompt, _build_cafe_comments_prompt,
-        _build_jisikin_title_prompt, _build_jisikin_body_prompt, _build_jisikin_answers_prompt,
-        _build_viral_stage1_prompt, _build_viral_stage2_prompt, _build_viral_stage3_prompt,
-        _parse_viral_output, _parse_viral_stage3,
-        _call_claude,
-    )
+    from src.api.prompt_test import _prompt_load_overrides
+    from src.api.blog import _build_blog_title_prompt, _build_blog_body_prompt
+    from src.api.cafe import _build_cafe_title_prompt, _build_cafe_body_prompt, _build_cafe_comments_prompt
+    from src.api.jisikin import _build_jisikin_title_prompt, _build_jisikin_body_prompt, _build_jisikin_answers_prompt
+    from src.api.viral import _build_viral_stage1_prompt, _build_viral_stage2_prompt, _build_viral_stage3_prompt, _parse_viral_output, _parse_viral_stage3
+    from src.services.ai_client import call_claude as _call_claude
     from src.api.naver import _naver_load_accounts, _naver_save_accounts
 
     body = await request.json()
@@ -143,7 +139,7 @@ async def batch_generate(request: Request):
                     if b_sys:
                         b_usr = f"[시스템 자동 전달]\n제목: {title}\n\n[사용자 입력]\n상위 노출 키워드: {kw}\n제품명: {product.get('name','')}\n제품 USP (차별 포인트): {product.get('usp','')}\n타겟층: {product.get('target','')}\n주요 성분: {product.get('ingredients','')}\n나만의 키워드: {product.get('brand_keyword','')}\n구매여정 단계: {stage}\n사진 수: 10장\n키워드 반복 수: 5회\n\n위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."
                     else:
-                        b_sys, b_usr = _build_blog_body_prompt(kw, stage, product, 10, 5, title)
+                        b_sys, b_usr = _build_blog_body_prompt(kw, stage, product, 10, 5, title, char_target=0)
                     body_text = (await loop.run_in_executor(executor, _call_claude, b_sys, b_usr)).strip()
 
                 elif channel in ('카페', '카페SEO'):

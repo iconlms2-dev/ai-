@@ -1,16 +1,169 @@
-"""커뮤니티 침투글 생성 + Notion 저장"""
+"""커뮤니티 침투글 생성 + Notion 저장 + 계정 관리"""
+import os
 import json
+import time
+import uuid
 import asyncio
+import threading
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN
+from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN, BASE_DIR
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
 
 router = APIRouter()
+
+# ── 계정 관리 ──
+
+COMMUNITY_ACCOUNTS_FILE = os.path.join(BASE_DIR, "community_accounts.json")
+_cmt_lock = threading.RLock()
+
+
+def _cmt_load_raw():
+    """lock 없이 파일 읽기 — 반드시 외부에서 _cmt_lock을 잡고 호출"""
+    if os.path.exists(COMMUNITY_ACCOUNTS_FILE):
+        try:
+            with open(COMMUNITY_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {'accounts': []}
+
+
+def _cmt_save_raw(data):
+    """lock 없이 파일 쓰기 — 반드시 외부에서 _cmt_lock을 잡고 호출"""
+    with open(COMMUNITY_ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _cmt_load_accounts():
+    """lock 포함 파일 읽기 — 단독 호출용"""
+    with _cmt_lock:
+        return _cmt_load_raw()
+
+
+def _cmt_save_accounts(data):
+    """lock 포함 파일 쓰기 — 단독 호출용"""
+    with _cmt_lock:
+        _cmt_save_raw(data)
+
+
+@router.get("/accounts")
+async def community_accounts_list():
+    """커뮤니티 계정 목록"""
+    return _cmt_load_accounts()
+
+
+@router.post("/accounts")
+async def community_accounts_add(request: Request):
+    """계정 추가"""
+    body = await request.json()
+    with _cmt_lock:
+        data = _cmt_load_raw()
+        acc = {
+            'id': str(uuid.uuid4())[:8],
+            'nickname': body.get('nickname', ''),
+            'community': body.get('community', ''),
+            'account_id': body.get('account_id', ''),
+            'created': time.strftime('%Y-%m-%d'),
+            'normal_activity_start': body.get('normal_activity_start', ''),
+            'post_count': 0,
+            'monthly_post_count': 0,
+            'monthly_reset': time.strftime('%Y-%m'),
+            'last_activity': '',
+            'status': '숙성중',  # 숙성중 / 활동가능 / 침투가능
+            'history': [],
+            'deleted_posts': [],
+        }
+        data['accounts'].append(acc)
+        _cmt_save_raw(data)
+    return {'ok': True, 'account': acc}
+
+
+@router.delete("/accounts/{acc_id}")
+async def community_accounts_delete(acc_id: str):
+    """계정 삭제"""
+    with _cmt_lock:
+        data = _cmt_load_raw()
+        data['accounts'] = [a for a in data['accounts'] if a['id'] != acc_id]
+        _cmt_save_raw(data)
+    return {'ok': True}
+
+
+@router.get("/accounts/{acc_id}/check")
+async def community_accounts_check(acc_id: str):
+    """계정 상태 체크 — 침투 가능 여부
+    멘토 가이드: 최소 1~2주 일반 활동 후 침투글, 월 2~3개 글
+    """
+    from datetime import datetime
+    with _cmt_lock:
+        data = _cmt_load_raw()
+        for acc in data['accounts']:
+            if acc['id'] == acc_id:
+                errors = []
+                # D2: 1~2주 활동 체크
+                if acc.get('normal_activity_start'):
+                    try:
+                        start = datetime.strptime(acc['normal_activity_start'], '%Y-%m-%d')
+                        days = (datetime.now() - start).days
+                        if days < 14:
+                            errors.append(f'일반 활동 {days}일차입니다. 최소 14일(2주) 필요합니다. ({14-days}일 남음)')
+                    except ValueError:
+                        errors.append(f'normal_activity_start 날짜 형식 오류: {acc["normal_activity_start"]} (YYYY-MM-DD 필요)')
+                else:
+                    errors.append('일반 활동 시작일이 설정되지 않았습니다.')
+                # D3: 월 2~3개 체크
+                current_month = time.strftime('%Y-%m')
+                if acc.get('monthly_reset') != current_month:
+                    acc['monthly_post_count'] = 0
+                    acc['monthly_reset'] = current_month
+                    _cmt_save_raw(data)
+                if acc.get('monthly_post_count', 0) >= 3:
+                    errors.append(f'이번 달 침투글 {acc["monthly_post_count"]}개 작성. 월 최대 3개 권장.')
+                return {'ready': len(errors) == 0, 'errors': errors, 'account': acc}
+    return JSONResponse({'error': '계정 없음'}, status_code=404)
+
+
+@router.post("/accounts/{acc_id}/record")
+async def community_accounts_record(acc_id: str, request: Request):
+    """활동 기록"""
+    body = await request.json()
+    activity_type = body.get('type', 'post')  # post / deleted
+    with _cmt_lock:
+        data = _cmt_load_raw()
+        found = False
+        for acc in data['accounts']:
+            if acc['id'] == acc_id:
+                found = True
+                if activity_type == 'post':
+                    acc['post_count'] = acc.get('post_count', 0) + 1
+                    current_month = time.strftime('%Y-%m')
+                    if acc.get('monthly_reset') != current_month:
+                        acc['monthly_post_count'] = 0
+                        acc['monthly_reset'] = current_month
+                    acc['monthly_post_count'] = acc.get('monthly_post_count', 0) + 1
+                elif activity_type == 'deleted':
+                    # D5: 글 삭제 기록
+                    acc['deleted_posts'] = acc.get('deleted_posts', [])
+                    acc['deleted_posts'].append({
+                        'date': time.strftime('%Y-%m-%d %H:%M'),
+                        'note': body.get('note', ''),
+                    })
+                acc['last_activity'] = time.strftime('%Y-%m-%d %H:%M')
+                acc['history'] = acc.get('history', [])
+                acc['history'].append({
+                    'type': activity_type,
+                    'date': time.strftime('%Y-%m-%d %H:%M'),
+                })
+                acc['history'] = acc['history'][-100:]
+                break
+        if not found:
+            return JSONResponse({'error': '계정 없음'}, status_code=404)
+        _cmt_save_raw(data)
+    return {'ok': True}
 
 # ── 톤 & 전략 상수 ──
 
@@ -24,6 +177,7 @@ COMMUNITY_TONES = {
     '인스티즈': '연예·뷰티 톤, 가벼운 대화체. 짧게(200~500자).',
     '화해': '성분 리뷰 특화, 분석적 톤. 성분 근거 없으면 신뢰 안 됨. 중간(500~1000자).',
     '블라인드': '직장인 톤, 간결하고 실용적. 광고 적대적. 짧게(200~500자).',
+    '루리웹': '게임/서브컬처/IT 톤, 10~30대 남성, 반말. 광고 적대적. 짧게(200~500자).',
 }
 
 STRATEGY_NAME = {
@@ -31,6 +185,8 @@ STRATEGY_NAME = {
     '2': '추천 요청형 (낚시)',
     '3': '비교 리뷰형',
     '4': '자기 제품 까기 (역발상)',
+    '5': '논쟁 유도형 (계정 농사)',
+    '6': '정보 제공자 포지션 (전문가 행세)',
 }
 
 
@@ -103,6 +259,18 @@ def _build_community_post_prompt(community, strategy, keyword, appeal, buying_on
 - 단점은 사소하게(향, 가격), 장점은 구체적으로
 - "세일 때 사라" 식으로 구매 유도하면서 광고 안 티남
 
+● 유형5: 논쟁 유도형 (계정 농사)
+- 제품 카테고리 관련 토론 글을 올림 (예: "솔직히 탈모샴푸가 효과 있긴 한 거임?")
+- 이런 글은 댓글이 폭발함 (커뮤니티는 논쟁을 좋아함)
+- 핵심: 글 작성자 본인이 아닌, 댓글에서 다른 사람이 키워드를 언급해야 자연스러움
+- 원글에서는 제품을 언급하지 않고, 댓글에서만 나만의 키워드 1회 등장
+
+● 유형6: 정보 제공자 포지션 (전문가 행세)
+- 해당 카테고리의 정보글/비교글/정리글을 작성 (내 제품은 안 넣음)
+- 예: "탈모샴푸 10종 성분 비교 정리해봤다", "다이어트 보조제 FDA 인증 여부 확인법"
+- 이런 글을 올리면 "이 사람은 이 분야를 아는 사람" 인식 형성
+- 나중에 추천 요청이 오면 "전에 비교글 올렸는데, 개인적으로는 {{키워드}} 조합이 제일 괜찮았음" 식으로 답변
+
 ---
 
 [커뮤니티별 톤 매칭 — 반드시 해당 커뮤니티 말투에 맞출 것]
@@ -115,8 +283,16 @@ def _build_community_post_prompt(community, strategy, keyword, appeal, buying_on
 ● 더쿠/인스티즈: 여성 커뮤 톤, 반말/존댓말 혼용, 가벼운 리뷰
 ● 화해: 성분 중심 리뷰, 분석적 톤, 존댓말
 ● 블라인드: 직장인 톤, 존댓말, 현실적 고민 공유
+● 루리웹: 게임/서브컬처/IT 톤, 반말, 10~30대 남성
 
 ---
+
+[타이밍 활용 — 시즌/이슈 편승]
+- 환절기: "요즘 두피 미쳤다… 다들 뭐 쓰냐"
+- 여름 전: "다이어트 시작해야 하는데 뭐부터 하냐"
+- 블프/연말 세일: "블프 때 뭐 살 거 정해놨음?" → 제품 자연 언급
+- 언론 기사 이슈: "탈모 20대 급증이라는데 ㄹㅇ?" → 관련 제품 대화
+- 시즌 글에 편승해서 댓글로 끼어들면 광고 의심을 거의 안 받음
 
 [작성 규칙]
 - 광고 티 절대 금지 (조금이라도 나면 '홍보충' 낙인)
@@ -246,6 +422,8 @@ async def community_generate(request: Request):
 @router.post("/save-notion")
 async def community_save_notion(request: Request):
     body = await request.json()
+    if not body.get('review_passed', True):
+        return {'success': False, 'error': '검수 미통과 콘텐츠는 저장할 수 없습니다.'}
     headers_n = {
         'Authorization': 'Bearer %s' % NOTION_TOKEN,
         'Content-Type': 'application/json',

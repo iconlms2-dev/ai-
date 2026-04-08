@@ -1724,6 +1724,53 @@ function renderViral(mc) {
   <div class="ka-wrap">
     <div class="ka-title">🔥 카페바이럴</div>
 
+    <!-- 모드 탭 -->
+    <div class="ka-section">
+      <div style="display:flex;gap:4px;margin-bottom:12px">
+        <button class="ka-btn ka-btn-primary" id="viralTabSet" onclick="viralSwitchTab('set')">📦 세트 생성</button>
+        <button class="ka-btn" id="viralTabStage" onclick="viralSwitchTab('stage')">🎯 단계별 생성</button>
+        <button class="ka-btn" id="viralTabAccounts" onclick="viralSwitchTab('accounts')">👤 계정 관리</button>
+      </div>
+    </div>
+
+    <!-- 계정 관리 탭 -->
+    <div id="viralAccountsTab" style="display:none">
+      <div class="ka-section">
+        <div class="ka-section-title">계정 목록 <button class="ka-btn ka-btn-primary" onclick="viralAddAccount()" style="font-size:11px;padding:2px 10px;margin-left:8px">+ 추가</button></div>
+        <div id="viralAccountsList" style="font-size:13px;color:var(--text-secondary)">로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 단계별 생성 탭 -->
+    <div id="viralStageTab" style="display:none">
+      <div class="ka-section">
+        <div class="ka-section-title">계정 선택</div>
+        <select class="ka-input" id="viralStageAccount" style="width:100%" onchange="viralStageAccountChange()">
+          <option value="">계정을 선택하세요</option>
+        </select>
+        <div id="viralStageStatus" style="margin-top:8px;font-size:12px"></div>
+      </div>
+      <div class="ka-section">
+        <div class="ka-section-title">단계 선택</div>
+        <div style="display:flex;gap:8px">
+          <button class="ka-btn" onclick="viralGenerateStage(1)" id="viralStageBtn1">1단계 일상글</button>
+          <button class="ka-btn" onclick="viralGenerateStage(2)" id="viralStageBtn2">2단계 고민글</button>
+          <button class="ka-btn" onclick="viralGenerateStage(3)" id="viralStageBtn3" disabled>3단계 침투글 🔒</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <label style="font-size:12px;color:var(--text-secondary)">생성 수: <input class="ka-input" id="viralStageCount" type="number" value="1" min="1" max="10" style="width:60px"></label>
+        </div>
+      </div>
+      <div class="ka-section">
+        <div class="ka-section-title">2주 플랜</div>
+        <button class="ka-btn" onclick="viralCreatePlan()">📅 플랜 생성</button>
+        <div id="viralPlanView" style="margin-top:12px"></div>
+      </div>
+      <div id="viralStageResults"></div>
+    </div>
+
+    <!-- 세트 생성 탭 (기존) -->
+    <div id="viralSetTab">
     <!-- 카테고리 -->
     <div class="ka-section">
       <div class="ka-section-title">카페 카테고리</div>
@@ -1796,7 +1843,197 @@ function renderViral(mc) {
         <div id="viralResultsList"></div>
       </div>
     </div>
+    </div><!-- /viralSetTab -->
   </div>`;
+  viralLoadAccounts();
+}
+
+// ── 카페바이럴 탭 전환 ──
+function viralSwitchTab(tab) {
+  document.getElementById('viralSetTab').style.display = tab==='set'?'':'none';
+  document.getElementById('viralStageTab').style.display = tab==='stage'?'':'none';
+  document.getElementById('viralAccountsTab').style.display = tab==='accounts'?'':'none';
+  document.getElementById('viralTabSet').className = 'ka-btn'+(tab==='set'?' ka-btn-primary':'');
+  document.getElementById('viralTabStage').className = 'ka-btn'+(tab==='stage'?' ka-btn-primary':'');
+  document.getElementById('viralTabAccounts').className = 'ka-btn'+(tab==='accounts'?' ka-btn-primary':'');
+  if (tab==='accounts') viralLoadAccounts();
+  if (tab==='stage') viralLoadStageAccounts();
+}
+
+// ── 계정 관리 ──
+async function viralLoadAccounts() {
+  try {
+    const r = await fetch(API+'/api/viral/accounts');
+    const d = await r.json();
+    const el = document.getElementById('viralAccountsList');
+    if (!d.accounts || d.accounts.length === 0) {
+      el.innerHTML = '<div style="color:var(--text-muted);padding:12px">등록된 계정이 없습니다. + 추가 버튼을 눌러주세요.</div>';
+      return;
+    }
+    el.innerHTML = d.accounts.map(a => {
+      const ready = (a.stage1_count||0) >= 5 && (a.stage1_count||0)+(a.stage2_count||0) >= 6;
+      const badge = ready ? '<span style="color:var(--green);font-size:11px">✅ 3단계 가능</span>' : '<span style="color:var(--yellow);font-size:11px">⏳ 일상글 '+(a.stage1_count||0)+'/5</span>';
+      const mentions = Object.entries(a.product_mentions||{}).map(([k,v])=>k+':'+v+'회').join(', ') || '없음';
+      return '<div style="padding:12px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;background:var(--bg-primary)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div><strong>'+escapeHtml(a.nickname||'이름없음')+'</strong> <span style="font-size:11px;color:var(--text-muted)">'+escapeHtml(a.cafe_name||'')+'</span></div>'
+        +'<div style="display:flex;gap:4px">'
+        +'<button class="ka-btn" style="font-size:10px;padding:2px 6px" onclick="viralDeleteAccount(\''+a.id+'\')">삭제</button>'
+        +'</div></div>'
+        +'<div style="display:flex;gap:12px;font-size:11px;color:var(--text-secondary)">'
+        +'<span>일상: '+(a.stage1_count||0)+'개</span>'
+        +'<span>고민: '+(a.stage2_count||0)+'개</span>'
+        +'<span>침투: '+(a.stage3_count||0)+'개</span>'
+        +'<span>제품언급: '+mentions+'</span>'
+        +badge
+        +'</div>'
+        +(a.last_activity?'<div style="font-size:10px;color:var(--text-muted);margin-top:4px">마지막 활동: '+a.last_activity+'</div>':'')
+        +'</div>';
+    }).join('');
+  } catch(e) { document.getElementById('viralAccountsList').innerHTML = '로드 실패: '+e.message; }
+}
+
+async function viralAddAccount() {
+  const nickname = prompt('닉네임:');
+  if (!nickname) return;
+  const cafe_name = prompt('카페 이름:') || '';
+  const naver_id = prompt('네이버 ID (선택):') || '';
+  try {
+    await fetch(API+'/api/viral/accounts', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nickname, cafe_name, naver_id})});
+    viralLoadAccounts();
+    showToast('계정 추가 완료');
+  } catch(e) { showToast('추가 실패: '+e.message, 'error'); }
+}
+
+async function viralDeleteAccount(id) {
+  if (!confirm('이 계정을 삭제하시겠습니까?')) return;
+  try {
+    await fetch(API+'/api/viral/accounts/'+id, {method:'DELETE'});
+    viralLoadAccounts();
+    showToast('계정 삭제 완료');
+  } catch(e) { showToast('삭제 실패', 'error'); }
+}
+
+// ── 단계별 생성 ──
+async function viralLoadStageAccounts() {
+  try {
+    const r = await fetch(API+'/api/viral/accounts');
+    const d = await r.json();
+    const sel = document.getElementById('viralStageAccount');
+    sel.innerHTML = '<option value="">계정을 선택하세요</option>' + (d.accounts||[]).map(a =>
+      '<option value="'+a.id+'">'+escapeHtml(a.nickname)+' ('+escapeHtml(a.cafe_name||'')+') — 일상:'+(a.stage1_count||0)+' 고민:'+(a.stage2_count||0)+' 침투:'+(a.stage3_count||0)+'</option>'
+    ).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function viralStageAccountChange() {
+  const accId = document.getElementById('viralStageAccount').value;
+  const statusEl = document.getElementById('viralStageStatus');
+  const btn3 = document.getElementById('viralStageBtn3');
+  if (!accId) { statusEl.innerHTML = ''; btn3.disabled = true; return; }
+  try {
+    const prod = JSON.parse(localStorage.getItem('blogProduct')||'{}');
+    const r = await fetch(API+'/api/viral/accounts/'+accId+'/check?product='+encodeURIComponent(prod.name||''));
+    const d = await r.json();
+    if (d.ready) {
+      statusEl.innerHTML = '<span style="color:var(--green)">✅ 3단계 실행 가능</span>';
+      btn3.disabled = false;
+      btn3.textContent = '3단계 침투글';
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--yellow)">⚠️ '+(d.errors||[]).join(' / ')+'</span>';
+      btn3.disabled = true;
+      btn3.textContent = '3단계 침투글 🔒';
+    }
+    if (d.product_check && !d.product_check.allowed) {
+      statusEl.innerHTML += '<br><span style="color:var(--red)">🚫 '+d.product_check.reason+'</span>';
+      btn3.disabled = true;
+    }
+  } catch(e) { statusEl.innerHTML = '체크 실패'; }
+}
+
+async function viralGenerateStage(stage) {
+  const accId = document.getElementById('viralStageAccount').value;
+  if (!accId) { showToast('계정을 선택하세요'); return; }
+  const count = parseInt(document.getElementById('viralStageCount').value)||1;
+  const prod = JSON.parse(localStorage.getItem('blogProduct')||'{}');
+  const category = viralGetCategory ? viralGetCategory() : '건강카페';
+  const stageNames = {1:'일상글',2:'고민글',3:'침투글'};
+  const resEl = document.getElementById('viralStageResults');
+  resEl.innerHTML = '<div style="padding:12px;color:var(--text-secondary)">'+stageNames[stage]+' '+count+'개 생성 중...</div>';
+
+  try {
+    const resp = await fetch(API+'/api/viral/generate-stage', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({stage, account_id:accId, count, category, product:{
+        name:prod.name||'', brand_keyword:prod.brand_keyword||'', usp:prod.usp||'',
+        target:prod.target||'', target_concern:prod.target_concern||'',
+        ingredients:prod.ingredients||'', product_category:prod.product_category||''
+      }})
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', results = [];
+    while (true) {
+      const {done,value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value,{stream:true});
+      const parts = buf.split('\n\n'); buf = parts.pop();
+      for (const p of parts) {
+        if (!p.startsWith('data: ')) continue;
+        let ev; try { ev = JSON.parse(p.substring(6)); } catch(_){continue;}
+        if (ev.type==='error') { showToast(ev.message||'오류','error'); }
+        if (ev.type==='warning') { showToast(ev.msg||'경고','warning'); }
+        if (ev.type==='result') { results.push(ev.data); }
+        if (ev.type==='complete') {}
+      }
+    }
+    resEl.innerHTML = results.map((r,i) =>
+      '<div style="padding:10px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:6px;background:var(--bg-primary)">'
+      +'<div style="font-size:12px;font-weight:600;color:var(--accent-blue);margin-bottom:4px">'+stageNames[stage]+' #'+(i+1)+'</div>'
+      +'<div style="font-size:13px;font-weight:600">'+escapeHtml(r.title||'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;margin-top:4px;max-height:150px;overflow-y:auto">'+escapeHtml(r.body||'')+'</div>'
+      +(r.comments?'<div style="font-size:11px;color:var(--text-muted);margin-top:4px;white-space:pre-wrap">'+escapeHtml(r.comments)+'</div>':'')
+      +'</div>'
+    ).join('') || '<div style="color:var(--text-muted);padding:12px">결과 없음</div>';
+    viralStageAccountChange(); // 상태 갱신
+    showToast(stageNames[stage]+' '+results.length+'개 생성 완료');
+  } catch(e) { resEl.innerHTML = '생성 실패: '+e.message; }
+}
+
+// ── 2주 플랜 ──
+async function viralCreatePlan() {
+  const accId = document.getElementById('viralStageAccount').value;
+  if (!accId) { showToast('계정을 선택하세요'); return; }
+  try {
+    const r = await fetch(API+'/api/viral/accounts/'+accId+'/plan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
+    const d = await r.json();
+    viralRenderPlan(d.plan);
+    showToast('2주 플랜 생성 완료');
+  } catch(e) { showToast('플랜 생성 실패','error'); }
+}
+
+async function viralLoadPlan(accId) {
+  try {
+    const r = await fetch(API+'/api/viral/accounts/'+accId+'/plan');
+    const d = await r.json();
+    viralRenderPlan(d.plan||[]);
+  } catch(e) {}
+}
+
+function viralRenderPlan(plan) {
+  const el = document.getElementById('viralPlanView');
+  if (!plan||plan.length===0) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px">플랜 없음. "플랜 생성" 버튼을 눌러주세요.</div>'; return; }
+  const colors = {done:'var(--green)',today:'var(--yellow)',upcoming:'var(--text-muted)'};
+  const icons = {done:'✅',today:'🔵',upcoming:'⬜'};
+  el.innerHTML = '<div style="display:grid;gap:4px">' + plan.map(p => {
+    const c = colors[p.status||'upcoming'];
+    const ic = icons[p.status||'upcoming'];
+    return '<div style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:4px;background:'+(p.status==='today'?'rgba(251,191,36,0.1)':'transparent')+'">'
+      +'<span style="font-size:12px">'+ic+'</span>'
+      +'<span style="font-size:11px;color:var(--text-muted);min-width:60px">D'+p.day+' '+p.date.substring(5)+'</span>'
+      +'<span style="font-size:12px;color:'+c+'">'+escapeHtml(p.task)+'</span>'
+      +'</div>';
+  }).join('') + '</div>';
 }
 
 function viralCategoryChange() {
@@ -1862,6 +2099,7 @@ async function viralGenerate() {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
         if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
+        if (ev.type === 'warning') { showToast(ev.msg || '경고', 'warning'); msg.textContent = '⚠️ ' + (ev.msg||''); continue; }
         if (handleReviewEvent(ev, document.getElementById('viralReviewStatus'))) { continue; }
         if (ev.type === 'progress') {
           msg.textContent = ev.msg;
@@ -4272,6 +4510,24 @@ function renderCommunity(mc) {
   <div class="ka-wrap">
     <div class="ka-title">💬 커뮤니티 침투</div>
 
+    <!-- 모드 탭 -->
+    <div class="ka-section">
+      <div style="display:flex;gap:4px;margin-bottom:12px">
+        <button class="ka-btn ka-btn-primary" id="cmtTabMain" onclick="cmtSwitchTab('main')">📝 글 생성</button>
+        <button class="ka-btn" id="cmtTabAccounts" onclick="cmtSwitchTab('accounts')">👤 계정 관리</button>
+      </div>
+    </div>
+
+    <!-- 계정 관리 탭 -->
+    <div id="cmtAccountsTab" style="display:none">
+      <div class="ka-section">
+        <div class="ka-section-title">계정 목록 <button class="ka-btn ka-btn-primary" onclick="cmtAddAccount()" style="font-size:11px;padding:2px 10px;margin-left:8px">+ 추가</button></div>
+        <div id="cmtAccountsList" style="font-size:13px;color:var(--text-secondary)">로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 글 생성 탭 -->
+    <div id="cmtMainTab">
     <!-- 커뮤니티 + 전략 -->
     <div class="ka-section">
       <div class="ka-section-title">타겟 커뮤니티 + 전략</div>
@@ -4354,10 +4610,91 @@ function renderCommunity(mc) {
         <div id="cmtResultsList"></div>
       </div>
     </div>
+    </div><!-- /cmtMainTab -->
   </div>`;
   document.getElementById('cmtCommunity').addEventListener('change', function() {
     document.getElementById('cmtCommunityCustom').classList.toggle('ka-hidden', this.value !== '직접입력');
   });
+  cmtLoadAccounts();
+}
+
+// ── 커뮤니티 탭 전환 ──
+function cmtSwitchTab(tab) {
+  document.getElementById('cmtMainTab').style.display = tab==='main'?'':'none';
+  document.getElementById('cmtAccountsTab').style.display = tab==='accounts'?'':'none';
+  document.getElementById('cmtTabMain').className = 'ka-btn'+(tab==='main'?' ka-btn-primary':'');
+  document.getElementById('cmtTabAccounts').className = 'ka-btn'+(tab==='accounts'?' ka-btn-primary':'');
+  if (tab==='accounts') cmtLoadAccounts();
+}
+
+// ── 커뮤니티 계정 관리 ──
+async function cmtLoadAccounts() {
+  try {
+    const r = await fetch(API+'/api/community/accounts');
+    const d = await r.json();
+    const el = document.getElementById('cmtAccountsList');
+    if (!el) return;
+    if (!d.accounts || d.accounts.length === 0) {
+      el.innerHTML = '<div style="color:var(--text-muted);padding:12px">등록된 계정이 없습니다. + 추가 버튼을 눌러주세요.</div>';
+      return;
+    }
+    el.innerHTML = d.accounts.map(a => {
+      const statusColors = {'숙성중':'var(--yellow)','활동가능':'var(--green)','침투가능':'var(--accent-blue)'};
+      const statusColor = statusColors[a.status] || 'var(--text-muted)';
+      const daysSinceStart = a.normal_activity_start ? Math.floor((Date.now()-new Date(a.normal_activity_start).getTime())/86400000) : 0;
+      const mature = daysSinceStart >= 14;
+      const badge = mature
+        ? '<span style="color:var(--green);font-size:11px">침투 가능 ('+daysSinceStart+'일)</span>'
+        : '<span style="color:var(--yellow);font-size:11px">숙성 '+daysSinceStart+'/14일</span>';
+      return '<div style="padding:12px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;background:var(--bg-primary)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<div><strong>'+escapeHtml(a.nickname||'이름없음')+'</strong> <span style="font-size:11px;color:var(--text-muted)">'+escapeHtml(a.community||'')+'</span></div>'
+        +'<div style="display:flex;gap:4px">'
+        +'<button class="ka-btn" style="font-size:10px;padding:2px 6px" onclick="cmtCheckAccount(\''+a.id+'\')">상태</button>'
+        +'<button class="ka-btn" style="font-size:10px;padding:2px 6px" onclick="cmtDeleteAccount(\''+a.id+'\')">삭제</button>'
+        +'</div></div>'
+        +'<div style="display:flex;gap:12px;font-size:11px;color:var(--text-secondary)">'
+        +'<span>총 글: '+(a.post_count||0)+'개</span>'
+        +'<span>이번달: '+(a.monthly_post_count||0)+'/3개</span>'
+        +'<span>삭제: '+(a.deleted_posts||[]).length+'건</span>'
+        +'<span style="color:'+statusColor+'">'+escapeHtml(a.status||'')+'</span>'
+        +badge
+        +'</div>'
+        +(a.last_activity?'<div style="font-size:10px;color:var(--text-muted);margin-top:4px">마지막 활동: '+a.last_activity+'</div>':'')
+        +'</div>';
+    }).join('');
+  } catch(e) { const el = document.getElementById('cmtAccountsList'); if(el) el.innerHTML = '로드 실패: '+e.message; }
+}
+
+async function cmtAddAccount() {
+  const nickname = prompt('닉네임:');
+  if (!nickname) return;
+  const community = prompt('커뮤니티 (예: 뽐뿌, 디시인사이드):') || '';
+  const account_id = prompt('계정 ID (선택):') || '';
+  const normal_activity_start = prompt('일반 활동 시작일 (YYYY-MM-DD, 빈칸=오늘):') || new Date().toISOString().substring(0,10);
+  try {
+    await fetch(API+'/api/community/accounts', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({nickname, community, account_id, normal_activity_start})});
+    cmtLoadAccounts();
+    showToast('계정 추가 완료');
+  } catch(e) { showToast('추가 실패: '+e.message, 'error'); }
+}
+
+async function cmtDeleteAccount(id) {
+  if (!confirm('이 계정을 삭제하시겠습니까?')) return;
+  try {
+    await fetch(API+'/api/community/accounts/'+id, {method:'DELETE'});
+    cmtLoadAccounts();
+    showToast('계정 삭제 완료');
+  } catch(e) { showToast('삭제 실패', 'error'); }
+}
+
+async function cmtCheckAccount(id) {
+  try {
+    const r = await fetch(API+'/api/community/accounts/'+id+'/check');
+    const d = await r.json();
+    if (d.ready) { showToast('침투 가능 상태입니다'); }
+    else { showToast((d.errors||[]).join(' / '), 'warning'); }
+  } catch(e) { showToast('체크 실패', 'error'); }
 }
 
 function cmtStratChange() {}

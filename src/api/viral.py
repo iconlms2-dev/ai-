@@ -1,19 +1,184 @@
 """카페바이럴 API 라우터"""
+import os
 import re
 import json
+import time
+import uuid
 import asyncio
+import threading
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN
+from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN, VIRAL_ACCOUNTS_FILE
 from src.services.common import error_response
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
 from src.services.notion_client import notion_headers
 
 router = APIRouter()
+
+# ───────────────────────────── 계정 관리 ─────────────────────────────
+
+_viral_lock = threading.RLock()
+
+
+def _viral_load_accounts():
+    """계정 목록 로드"""
+    with _viral_lock:
+        if os.path.exists(VIRAL_ACCOUNTS_FILE):
+            try:
+                with open(VIRAL_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {'accounts': []}
+
+
+def _viral_save_accounts(data):
+    """계정 목록 저장"""
+    with _viral_lock:
+        with open(VIRAL_ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _viral_get_account(account_id):
+    """ID로 계정 조회"""
+    data = _viral_load_accounts()
+    for acc in data['accounts']:
+        if acc['id'] == account_id:
+            return acc
+    return None
+
+
+def _viral_check_ready(account_id):
+    """계정이 침투글(3단계) 실행 가능한 상태인지 체크
+    - 일상글 5개 이상이어야 3단계 가능
+    - 제품 언급 2회 이상이면 차단
+    """
+    acc = _viral_get_account(account_id)
+    if not acc:
+        return {'ready': False, 'reason': '계정을 찾을 수 없습니다.'}
+    stage1_count = acc.get('stage1_count', 0)
+    stage2_count = acc.get('stage2_count', 0)
+    product_mentions = acc.get('product_mentions', {})
+
+    errors = []
+    if stage1_count < 5:
+        errors.append(f'일상글이 {stage1_count}개입니다. 최소 5개 필요합니다. (현재 {5 - stage1_count}개 부족)')
+    if stage1_count + stage2_count < 6:
+        errors.append(f'총 활동글(일상+고민)이 {stage1_count + stage2_count}개입니다. 최소 6개 필요합니다.')
+
+    return {'ready': len(errors) == 0, 'errors': errors, 'account': acc}
+
+
+def _viral_check_product_limit(account_id, product_name):
+    """해당 계정에서 특정 제품 언급 횟수 체크 (한 아이디당 1~2회 한계)"""
+    acc = _viral_get_account(account_id)
+    if not acc:
+        return {'allowed': False, 'reason': '계정을 찾을 수 없습니다.'}
+    mentions = acc.get('product_mentions', {})
+    count = mentions.get(product_name, 0)
+    if count >= 2:
+        return {'allowed': False, 'reason': f'이 계정은 "{product_name}" 제품을 이미 {count}회 언급했습니다. (한계: 2회)', 'count': count}
+    return {'allowed': True, 'count': count}
+
+
+def _viral_record_activity(account_id, stage, product_name=''):
+    """활동 기록 업데이트"""
+    data = _viral_load_accounts()
+    for acc in data['accounts']:
+        if acc['id'] == account_id:
+            if stage == 1:
+                acc['stage1_count'] = acc.get('stage1_count', 0) + 1
+            elif stage == 2:
+                acc['stage2_count'] = acc.get('stage2_count', 0) + 1
+            elif stage == 3:
+                acc['stage3_count'] = acc.get('stage3_count', 0) + 1
+                if product_name:
+                    mentions = acc.get('product_mentions', {})
+                    mentions[product_name] = mentions.get(product_name, 0) + 1
+                    acc['product_mentions'] = mentions
+            acc['last_activity'] = time.strftime('%Y-%m-%d %H:%M')
+            history = acc.get('history', [])
+            history.append({
+                'stage': stage,
+                'product': product_name,
+                'date': time.strftime('%Y-%m-%d %H:%M'),
+            })
+            acc['history'] = history[-100:]  # 최근 100개만 유지
+            break
+    _viral_save_accounts(data)
+
+
+# ── 계정 관리 엔드포인트 ──
+
+@router.get("/accounts")
+async def viral_accounts_list():
+    """계정 목록 조회"""
+    return _viral_load_accounts()
+
+
+@router.post("/accounts")
+async def viral_accounts_add(request: Request):
+    """계정 추가"""
+    body = await request.json()
+    with _viral_lock:
+        data = _viral_load_accounts()
+        acc = {
+            'id': str(uuid.uuid4())[:8],
+            'nickname': body.get('nickname', ''),
+            'cafe_name': body.get('cafe_name', ''),
+            'naver_id': body.get('naver_id', ''),
+            'created': time.strftime('%Y-%m-%d'),
+            'stage1_count': 0,
+            'stage2_count': 0,
+            'stage3_count': 0,
+            'product_mentions': {},
+            'last_activity': '',
+            'history': [],
+        }
+        data['accounts'].append(acc)
+        _viral_save_accounts(data)
+    return {'ok': True, 'account': acc}
+
+
+@router.put("/accounts/{acc_id}")
+async def viral_accounts_update(acc_id: str, request: Request):
+    """계정 수정"""
+    body = await request.json()
+    with _viral_lock:
+        data = _viral_load_accounts()
+        for acc in data['accounts']:
+            if acc['id'] == acc_id:
+                for k in ('nickname', 'cafe_name', 'naver_id'):
+                    if k in body:
+                        acc[k] = body[k]
+                _viral_save_accounts(data)
+                return {'ok': True, 'account': acc}
+    return JSONResponse({'error': '계정 없음'}, 404)
+
+
+@router.delete("/accounts/{acc_id}")
+async def viral_accounts_delete(acc_id: str):
+    """계정 삭제"""
+    with _viral_lock:
+        data = _viral_load_accounts()
+        data['accounts'] = [a for a in data['accounts'] if a['id'] != acc_id]
+        _viral_save_accounts(data)
+    return {'ok': True}
+
+
+@router.get("/accounts/{acc_id}/check")
+async def viral_accounts_check(acc_id: str, product: str = ''):
+    """계정 상태 체크 — 3단계 실행 가능 여부 + 제품 언급 한도"""
+    ready = _viral_check_ready(acc_id)
+    result = {**ready}
+    if product:
+        product_check = _viral_check_product_limit(acc_id, product)
+        result['product_check'] = product_check
+    return result
 
 
 # ───────────────────────────── PROMPT BUILDERS ─────────────────────────────
@@ -115,8 +280,12 @@ def _build_viral_stage3_prompt(category, target_concern, brand_keyword, product_
 
 [본문 내 제품 언급 규칙]
 - 제품명 또는 나만의 키워드를 본문에서 1회만 언급 가능
-- 반드시 경험 공유형 톤으로 ("~먹어보고 있는데 괜찮은 것 같아요")
+- 반드시 경험 공유형 톤으로 작성
 - 홍보 톤 절대 금지 ("추천드려요", "꼭 써보세요")
+- 예시:
+  - "예전에 그냥 커피로 버텼는데 요즘은 천연 성분 들어간 거 꾸준히 챙기니까 확실히 덜 피곤하더라구요ㅎㅎ"
+  - "저도 그거 먹고 있어요ㅎㅎ 처음엔 의심했는데 확실히 효과는 있는 것 같아요!"
+  - "요즘은 이런 제품들 많더라구요. 직접 써보니까 괜찮아요 :)"
 
 [댓글 세트 규칙] — 4개 댓글을 아래 흐름으로 작성한다
 - 댓글1: 공감 반응 ("저도 그래요ㅠㅠ", "완전 공감이에요")
@@ -228,6 +397,7 @@ async def viral_generate(request: Request):
     category = body.get('category', '')
     product = body.get('product', {})
     set_count = body.get('set_count', 3)
+    account_id = body.get('account_id', '')  # 계정 선택 (선택사항)
     target_concern = product.get('target_concern', '')
     brand_keyword = product.get('brand_keyword', '')
     product_name = product.get('name', '')
@@ -242,6 +412,17 @@ async def viral_generate(request: Request):
       try:
         loop = asyncio.get_running_loop()
         total_steps = set_count * 3
+
+        # 계정 선택 시: 3단계 실행 전 체크
+        if account_id:
+            ready = _viral_check_ready(account_id)
+            if not ready['ready']:
+                yield _sse({'type': 'warning', 'msg': '⚠️ 계정 상태 경고: ' + ' / '.join(ready.get('errors', []))})
+            if product_name:
+                prod_check = _viral_check_product_limit(account_id, product_name)
+                if not prod_check['allowed']:
+                    yield _sse({'type': 'error', 'message': '🚫 ' + prod_check['reason']})
+                    return
 
         for s in range(set_count):
             step_base = s * 3
@@ -281,6 +462,12 @@ async def viral_generate(request: Request):
             result['review_status'] = review_result["status"]
             result['review_passed'] = review_result["passed"]
 
+            # 계정 활동 기록 (검수 통과 시에만)
+            if account_id and review_result.get("passed", False):
+                _viral_record_activity(account_id, 1)
+                _viral_record_activity(account_id, 2)
+                _viral_record_activity(account_id, 3, product_name)
+
             yield _sse({'type': 'result', 'data': result, 'cur': step_base+3, 'total': total_steps})
 
         yield _sse({'type': 'complete', 'total': set_count})
@@ -289,6 +476,142 @@ async def viral_generate(request: Request):
         yield _sse({'type': 'error', 'message': f'카페바이럴 생성 중 오류: {e}'})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/generate-stage")
+async def viral_generate_stage(request: Request):
+    """단계별 개별 생성 (1단계 일상글만, 2단계 고민글만 등)
+    - account_id 필수
+    - stage: 1, 2, 3
+    - stage 3은 일상글 5개+고민글 1개 이상이어야 실행 가능
+    """
+    body = await request.json()
+    stage = body.get('stage', 1)
+    account_id = body.get('account_id', '')
+    count = body.get('count', 1)  # 한 번에 몇 개 생성
+    category = body.get('category', '')
+    product = body.get('product', {})
+
+    if not account_id:
+        return JSONResponse({'error': '계정을 선택하세요.'}, 400)
+
+    # 3단계 실행 전 체크
+    if stage == 3:
+        ready = _viral_check_ready(account_id)
+        if not ready['ready']:
+            return JSONResponse({'error': '3단계 실행 불가', 'reasons': ready.get('errors', [])}, 400)
+        product_name = product.get('name', '')
+        if product_name:
+            prod_check = _viral_check_product_limit(account_id, product_name)
+            if not prod_check['allowed']:
+                return JSONResponse({'error': prod_check['reason']}, 400)
+
+    def _sse(obj):
+        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+    async def generate():
+      try:
+        loop = asyncio.get_running_loop()
+        for i in range(count):
+            if stage == 1:
+                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 일상글 생성 중...'})
+                sys_p, usr_p = _build_viral_stage1_prompt(category, product.get('target', ''), '')
+                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                result = _parse_viral_output(raw)
+                _viral_record_activity(account_id, 1)
+                yield _sse({'type': 'result', 'data': {'stage': 1, 'num': i+1, **result}})
+
+            elif stage == 2:
+                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 고민글 생성 중...'})
+                sys_p, usr_p = _build_viral_stage2_prompt(category, product.get('target_concern', ''), product.get('product_category', ''))
+                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                result = _parse_viral_output(raw)
+                _viral_record_activity(account_id, 2)
+                yield _sse({'type': 'result', 'data': {'stage': 2, 'num': i+1, **result}})
+
+            elif stage == 3:
+                yield _sse({'type': 'progress', 'msg': f'[{i+1}/{count}] 침투글+댓글 생성 중...'})
+                sys_p, usr_p = _build_viral_stage3_prompt(
+                    category, product.get('target_concern', ''),
+                    product.get('brand_keyword', ''), product.get('name', ''),
+                    product.get('usp', ''), product.get('ingredients', ''),
+                    product.get('product_category', ''))
+                raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+                result = _parse_viral_stage3(raw)
+                _viral_record_activity(account_id, 3, product.get('name', ''))
+                yield _sse({'type': 'result', 'data': {'stage': 3, 'num': i+1, **result}})
+
+        yield _sse({'type': 'complete', 'total': count})
+      except Exception as e:
+        yield _sse({'type': 'error', 'message': str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/accounts/{acc_id}/plan")
+async def viral_create_plan(acc_id: str, request: Request):
+    """2주 플랜 생성 — 멘토 가이드: 최소 2주에 걸쳐 1단계→2단계→3단계 진행
+    일정 예시:
+    - 1~3일차: 1단계 일상글 5개 (하루 1~2개)
+    - 4~7일차: 댓글 교류 + 일상글 추가 2~3개
+    - 8~10일차: 2단계 고민글 1~2개
+    - 11~14일차: 3단계 침투글 1개
+    """
+    body = await request.json()
+    acc = _viral_get_account(acc_id)
+    if not acc:
+        return JSONResponse({'error': '계정 없음'}, 404)
+
+    start_date = body.get('start_date', time.strftime('%Y-%m-%d'))
+    from datetime import datetime, timedelta
+    start = datetime.strptime(start_date, '%Y-%m-%d')
+
+    plan = [
+        {'day': 1,  'date': (start + timedelta(days=0)).strftime('%Y-%m-%d'), 'task': '1단계 일상글 2개', 'stage': 1, 'count': 2},
+        {'day': 2,  'date': (start + timedelta(days=1)).strftime('%Y-%m-%d'), 'task': '1단계 일상글 2개', 'stage': 1, 'count': 2},
+        {'day': 3,  'date': (start + timedelta(days=2)).strftime('%Y-%m-%d'), 'task': '1단계 일상글 1개', 'stage': 1, 'count': 1},
+        {'day': 4,  'date': (start + timedelta(days=3)).strftime('%Y-%m-%d'), 'task': '댓글 교류 (수동)', 'stage': 0, 'count': 0},
+        {'day': 5,  'date': (start + timedelta(days=4)).strftime('%Y-%m-%d'), 'task': '1단계 일상글 1개 + 댓글 교류', 'stage': 1, 'count': 1},
+        {'day': 6,  'date': (start + timedelta(days=5)).strftime('%Y-%m-%d'), 'task': '1단계 일상글 1개 + 댓글 교류', 'stage': 1, 'count': 1},
+        {'day': 7,  'date': (start + timedelta(days=6)).strftime('%Y-%m-%d'), 'task': '댓글 교류 (수동)', 'stage': 0, 'count': 0},
+        {'day': 8,  'date': (start + timedelta(days=7)).strftime('%Y-%m-%d'), 'task': '2단계 고민글 1개', 'stage': 2, 'count': 1},
+        {'day': 9,  'date': (start + timedelta(days=8)).strftime('%Y-%m-%d'), 'task': '댓글 교류 (수동)', 'stage': 0, 'count': 0},
+        {'day': 10, 'date': (start + timedelta(days=9)).strftime('%Y-%m-%d'), 'task': '2단계 고민글 1개', 'stage': 2, 'count': 1},
+        {'day': 11, 'date': (start + timedelta(days=10)).strftime('%Y-%m-%d'), 'task': '댓글 교류 (수동)', 'stage': 0, 'count': 0},
+        {'day': 12, 'date': (start + timedelta(days=11)).strftime('%Y-%m-%d'), 'task': '댓글 교류 (수동)', 'stage': 0, 'count': 0},
+        {'day': 13, 'date': (start + timedelta(days=12)).strftime('%Y-%m-%d'), 'task': '3단계 침투글 1개', 'stage': 3, 'count': 1},
+        {'day': 14, 'date': (start + timedelta(days=13)).strftime('%Y-%m-%d'), 'task': '일상글 1개 (이력 관리)', 'stage': 1, 'count': 1},
+    ]
+
+    # 계정에 플랜 저장
+    data = _viral_load_accounts()
+    for a in data['accounts']:
+        if a['id'] == acc_id:
+            a['plan'] = plan
+            a['plan_start'] = start_date
+            break
+    _viral_save_accounts(data)
+
+    return {'ok': True, 'plan': plan, 'account_id': acc_id}
+
+
+@router.get("/accounts/{acc_id}/plan")
+async def viral_get_plan(acc_id: str):
+    """2주 플랜 조회"""
+    acc = _viral_get_account(acc_id)
+    if not acc:
+        return JSONResponse({'error': '계정 없음'}, 404)
+    plan = acc.get('plan', [])
+    # 현재 진행 상황 표시
+    today = time.strftime('%Y-%m-%d')
+    for item in plan:
+        if item['date'] < today:
+            item['status'] = 'done'
+        elif item['date'] == today:
+            item['status'] = 'today'
+        else:
+            item['status'] = 'upcoming'
+    return {'plan': plan, 'account': acc}
 
 
 @router.post("/save-notion")

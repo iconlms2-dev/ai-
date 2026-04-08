@@ -43,10 +43,12 @@ def _analyze_blog_article(url, keyword):
         r = req.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         body = soup.get_text()
+        char_count = len(body.replace(' ', '').replace('\n', '').replace('\t', ''))
         photo_count = len(soup.find_all('img', src=re.compile(r'postfiles|blogfiles|phinf')))
         kw_repeat = body.lower().count(keyword.lower())
-        return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1)}
-    except Exception:
+        return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1), 'char_count': char_count}
+    except Exception as e:
+        print(f"[_analyze_blog_article] {url}: {e}")
         return None
 
 
@@ -64,7 +66,7 @@ def _analyze_top_for_blog(keyword):
             if len(urls) >= 3:
                 break
         if not urls:
-            return {'photo_count': 8, 'keyword_repeat': 5}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
         results = []
         for url in urls[:3]:
             a = _analyze_blog_article(url, keyword)
@@ -72,13 +74,14 @@ def _analyze_top_for_blog(keyword):
                 results.append(a)
             time.sleep(0.5)
         if not results:
-            return {'photo_count': 8, 'keyword_repeat': 5}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
         return {
             'photo_count': max(round(sum(r['photo_count'] for r in results) / len(results)), 3),
-            'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3)
+            'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
+            'char_count': round(sum(r.get('char_count', 0) for r in results) / len(results))
         }
     except Exception:
-        return {'photo_count': 8, 'keyword_repeat': 5}
+        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
 
 
 # ── 프롬프트 빌더 ──
@@ -102,22 +105,36 @@ def _build_blog_title_prompt(keyword, product):
 - "{keyword} 저만 겪는 줄 알았는데..."
 - "이거 하나로 {keyword} 해결한 후기\""""
 
-    user = f"상위 노출 키워드: {keyword}"
+    user = f"""[입력 정보]
+- 상위 노출 키워드: {keyword}
+
+[제목 작성 규칙]
+"{keyword}"는 제목에 반드시 1회 자연스럽게 포함"""
     return system, user
 
 
-def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat, title=''):
+def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat, title='', char_target=0):
     """블로그 본문 프롬프트 (STEP 2) — {title}에 STEP 1 결과가 들어옴"""
+    # A3: 상위글 평균 글자수 기반 동적 설정 (멘토 가이드: 상위글 평균의 90~110%)
+    if char_target and char_target > 0:
+        char_min = int(char_target * 0.9)
+        char_max = int(char_target * 1.1)
+        char_rule = f"- 이 글의 전체 분량은 공백 포함 {char_min}~{char_max}자입니다. (상위글 평균 {char_target}자의 90~110%)"
+    else:
+        char_rule = "- 이 글의 전체 분량은 공백 포함 2,200자 이상이어야 합니다."
+
     system = """📌 역할:
 당신은 후기형 네이버 블로그 글의 오프닝부터 본문, 클로징까지 작성하는 작가입니다.
 
 📏 필수 지침: 글자 수 강제 조건
-- 이 글의 전체 분량은 공백 포함 2,200자 이상이어야 합니다.
+__CHAR_RULE__
 - 단락 수는 최소 8단락 이상
 - 각 단락은 200~350자 내외가 되도록 하며,
 - 절대 압축 요약하지 말고 느낌, 사례, 생각, 비교 등을 풍부하게 풀어 써주세요.
 
 ---
+
+꼭 제목을 참고해서 내용과 제목의 맥락이 맞게 해주세요.
 
 🧩 작성 구조 (5단 구성):
 
@@ -223,7 +240,7 @@ def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat
 ✍️ 톤 & 문체:
 - 말하듯이, 진솔하고 공감하는 톤. 존댓말 유지(~요).
 - 과장된 광고 문구 자제. 정보+체험 혼합 톤.
-- 동일 의미의 군더더기 반복은 가볍게 정리하되, 전체 분량은 ±10% 이내로 유지 (요약 금지)
+- 동일 의미의 군더더기 반복은 가볍게 정리하되, 전체 분량은 원문 대비 ±10% 이내로 유지한다. (요약 금지)
 
 🚫 금지 표현:
 - "치료", "완치", "효과 보장" 등 의료법 위반 표현
@@ -291,7 +308,7 @@ def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat
 
 제품을 사용한 계기를 한 문장으로 말해요.
 사용 직후 느낀 포인트를 한 문장으로 말해요.
-다음 문장으로 결과를 간결히 마무리해요."""
+다음 문장으로 결과를 간결히 마무리해요.""".replace('__CHAR_RULE__', char_rule)
 
     user = f"""[시스템 자동 전달]
 제목: {title}
@@ -428,13 +445,14 @@ async def blog_generate(request: Request):
 
             pc = analysis['photo_count']
             kr = analysis['keyword_repeat']
+            ct = analysis.get('char_count', 0)
             # STEP 1: 제목 생성
             msg2 = '[%d/%d] %s — 제목 생성 중...' % (i+1, total, kw)
             yield _sse({'type': 'progress', 'msg': msg2, 'cur': i, 'total': total})
             overrides = _prompt_load_overrides()
             title_sys = overrides.get('블로그_제목', None)
             if title_sys:
-                title_usr = f"상위 노출 키워드: {kw}"
+                title_usr = f"[입력 정보]\n- 상위 노출 키워드: {kw}\n\n[제목 작성 규칙]\n\"{kw}\"는 제목에 반드시 1회 자연스럽게 포함"
             else:
                 title_sys, title_usr = _build_blog_title_prompt(kw, product)
             title_raw = await loop.run_in_executor(executor, call_claude, title_sys, title_usr)
@@ -443,13 +461,14 @@ async def blog_generate(request: Request):
                 title = title.split('\n')[0].strip()
 
             # STEP 2: 본문 생성 (제목을 변수로 전달)
-            msg3 = '[%d/%d] %s — 본문 생성 중... (사진%d장, 키워드%d회)' % (i+1, total, kw, pc, kr)
+            ct_info = '상위글%d자, ' % ct if ct else ''
+            msg3 = '[%d/%d] %s — 본문 생성 중... (%s사진%d장, 키워드%d회)' % (i+1, total, kw, ct_info, pc, kr)
             yield _sse({'type': 'progress', 'msg': msg3, 'cur': i, 'total': total})
             body_sys = overrides.get('블로그_본문', None)
             if body_sys:
                 body_usr = f"[시스템 자동 전달]\n제목: {title}\n\n[사용자 입력]\n상위 노출 키워드: {kw}\n제품명: {product.get('name','')}\n제품 USP (차별 포인트): {product.get('usp','')}\n타겟층: {product.get('target','')}\n주요 성분: {product.get('ingredients','')}\n나만의 키워드: {product.get('brand_keyword','')}\n구매여정 단계: {stage}\n사진 수: {pc}장\n키워드 반복 수: {kr}회\n\n위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."
             else:
-                body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title)
+                body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
             body_text = await loop.run_in_executor(executor, call_claude, body_sys, body_usr)
             body_text = body_text.strip()
 

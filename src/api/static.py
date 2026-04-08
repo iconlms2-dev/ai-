@@ -23,6 +23,14 @@ async def serve_manual():
     return FileResponse(os.path.join(BASE_DIR, "사용안내서.html"), media_type="text/html")
 
 
+@router.get("/prompt-viewer")
+async def serve_prompt_viewer():
+    path = os.path.join(BASE_DIR, "prompt-viewer.html")
+    if not os.path.exists(path):
+        return JSONResponse({'error': 'prompt-viewer.html not found'}, 404)
+    return FileResponse(path, media_type="text/html")
+
+
 @router.post("/api/utm/generate")
 async def utm_generate(request: Request):
     """UTM 파라미터 생성"""
