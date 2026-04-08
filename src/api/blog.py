@@ -40,7 +40,7 @@ def _analyze_blog_article(url, keyword):
     """개별 블로그 글 분석: 사진수, 키워드반복수, 글자수"""
     try:
         # 네이버 블로그 데스크톱 URL은 iframe 구조라 본문이 비어 있음 → 모바일 URL로 변환
-        mobile_url = url.replace('blog.naver.com', 'm.blog.naver.com')
+        mobile_url = url if 'm.blog.naver.com' in url else url.replace('blog.naver.com', 'm.blog.naver.com')
         headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'}
         r = req.get(mobile_url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
