@@ -330,8 +330,23 @@ function renderPrompt(channel) {
       </div>
 
       <button class="copy-claude-btn" onclick="copyCombinedForClaude()">
-        📋 claude.ai에 붙여넣을 전체 프롬프트 복사
+        📋 claude.ai에 붙여넣을 전체 프롬프트 복사 (더미 데이터)
       </button>
+
+      <div style="margin-top:24px;padding:20px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--accent)">🚀 실제 데이터로 프롬프트 생성 (claude.ai용)</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">크롤링+분석+제목까지 서버에서 수행. 본문 프롬프트를 claude.ai에 복사해서 사용하세요.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="bpKeyword" placeholder="키워드" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="bpProdName" placeholder="제품명" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="bpProdUSP" placeholder="핵심 특징(USP)" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="bpProdIngr" placeholder="주요 성분" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="bpProdTarget" placeholder="타겟층" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="bpBrandKw" placeholder="나만의 키워드" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+        </div>
+        <button onclick="buildRealPrompt()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" id="bpBtn">🚀 프롬프트 생성 (크롤링+제목 포함)</button>
+        <div id="bpResult" style="margin-top:12px"></div>
+      </div>
     </div>
   `;
 }
@@ -372,6 +387,110 @@ function copyCombinedForClaude() {
 
 function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── 실제 데이터로 프롬프트 생성 ──
+
+async function buildRealPrompt() {
+  const keyword = document.getElementById('bpKeyword')?.value?.trim();
+  if (!keyword) return alert('키워드를 입력하세요');
+  const product = {
+    name: document.getElementById('bpProdName')?.value || '',
+    usp: document.getElementById('bpProdUSP')?.value || '',
+    ingredients: document.getElementById('bpProdIngr')?.value || '',
+    target: document.getElementById('bpProdTarget')?.value || '',
+    brand_keyword: document.getElementById('bpBrandKw')?.value || '',
+  };
+
+  // 현재 채널에 따라 API 분기
+  const ch = currentChannel || '';
+  let apiChannel = '';
+  let bodyData = {};
+
+  if (ch.startsWith('블로그')) {
+    apiChannel = 'blog';
+    bodyData = { keywords: [{keyword, stage: '3_정보습득'}], product };
+  } else if (ch.startsWith('카페SEO')) {
+    apiChannel = 'cafe';
+    bodyData = { keywords: [{keyword}], urls: [], product, settings: {} };
+  } else if (ch.startsWith('파워컨텐츠')) {
+    apiChannel = 'powercontent';
+    bodyData = { keyword, stage: '3_정보습득', appeal: '', buying_thing: '', deficit_level: '-4', product, analysis: '' };
+  } else if (ch.startsWith('지식인')) {
+    apiChannel = 'jisikin';
+    bodyData = { keywords: [{keyword}], product };
+  } else if (ch.startsWith('카페바이럴')) {
+    apiChannel = 'viral';
+    bodyData = { category: '건강카페', product: {...product, target_concern: '', product_category: ''} };
+  } else if (ch.startsWith('커뮤니티')) {
+    apiChannel = 'community';
+    bodyData = { keywords: [keyword], community: '뽐뿌', strategy: '1', product, appeal: '', buying_one: '', forbidden: '' };
+  } else {
+    document.getElementById('bpResult').innerHTML = '<div style="color:var(--red);font-size:13px">이 채널은 build-prompt를 지원하지 않습니다.</div>';
+    return;
+  }
+
+  const btn = document.getElementById('bpBtn');
+  btn.disabled = true;
+  btn.textContent = '생성 중... (크롤링+제목 포함, 최대 30초)';
+  document.getElementById('bpResult').innerHTML = '<div style="color:var(--text3);font-size:12px">서버에서 크롤링+분석+제목 생성 중...</div>';
+
+  try {
+    const resp = await fetch('/api/' + apiChannel + '/build-prompt', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(bodyData)
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    // 결과에서 combined 추출
+    let prompts = [];
+    if (data.results) {
+      data.results.forEach(r => {
+        if (r.title) prompts.push({label: '생성된 제목', text: r.title, copyable: false});
+        if (r.q_title) prompts.push({label: '생성된 질문 제목', text: r.q_title, copyable: false});
+        if (r.q_body) prompts.push({label: '생성된 질문 본문', text: r.q_body, copyable: false});
+        if (r.analysis) prompts.push({label: '상위글 분석', text: '사진 '+r.analysis.photo_count+'장, 키워드 '+r.analysis.keyword_repeat+'회, 글자수 '+r.analysis.char_count+'자', copyable: false});
+        if (r.body_prompt) prompts.push({label: '본문 프롬프트 (claude.ai용)', text: r.body_prompt.combined, copyable: true});
+        if (r.comments_prompt) prompts.push({label: '댓글 프롬프트 (claude.ai용)', text: r.comments_prompt.combined, copyable: true});
+        if (r.answers_prompt) prompts.push({label: '답변 프롬프트 (claude.ai용)', text: r.answers_prompt.combined, copyable: true});
+        if (r.post_prompt) prompts.push({label: '침투글 프롬프트 (claude.ai용)', text: r.post_prompt.combined, copyable: true});
+      });
+    } else if (data.steps) {
+      data.steps.forEach(s => prompts.push({label: s.name + ' (claude.ai용)', text: s.combined, copyable: true}));
+    } else if (data.body_prompt) {
+      if (data.ad_title) prompts.push({label: '생성된 광고 제목', text: data.ad_title, copyable: false});
+      if (data.ad_desc) prompts.push({label: '생성된 광고 설명', text: data.ad_desc, copyable: false});
+      prompts.push({label: '본문 프롬프트 (claude.ai용)', text: data.body_prompt.combined, copyable: true});
+    }
+
+    let html = '';
+    prompts.forEach((p, i) => {
+      html += '<div style="margin-bottom:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      html += '<strong style="font-size:13px;color:' + (p.copyable ? 'var(--green)' : 'var(--blue)') + '">' + escHtml(p.label) + '</strong>';
+      if (p.copyable) html += '<button onclick="bpCopy('+i+')" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">📋 복사</button>';
+      html += '</div>';
+      if (p.copyable) {
+        html += '<textarea id="bpText'+i+'" readonly style="width:100%;height:100px;font-size:11px;font-family:monospace;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:8px;color:var(--text);resize:vertical">' + escHtml(p.text) + '</textarea>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;max-height:60px;overflow-y:auto">' + escHtml(p.text) + '</div>';
+      }
+      html += '</div>';
+    });
+    document.getElementById('bpResult').innerHTML = html;
+  } catch(e) {
+    document.getElementById('bpResult').innerHTML = '<div style="color:var(--red);font-size:13px">실패: ' + escHtml(e.message) + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = '🚀 프롬프트 생성 (크롤링+제목 포함)';
+}
+
+function bpCopy(idx) {
+  const ta = document.getElementById('bpText' + idx);
+  if (!ta) return;
+  navigator.clipboard.writeText(ta.value).then(() => {
+    alert('복사 완료! claude.ai에 붙여넣기 하세요.');
+  }).catch(() => { ta.select(); document.execCommand('copy'); });
 }
 
 // 초기화

@@ -1003,7 +1003,6 @@ function renderBlog(mc) {
     <div class="ka-section">
       <div class="ka-btn-group">
         <button class="ka-btn ka-btn-primary" id="blogGenBtn" onclick="blogGenerate()">🚀 생성 시작</button>
-        <button class="ka-btn" onclick="buildPromptCopy('blog')">📋 프롬프트 복사</button>
         <button class="ka-btn ka-btn-danger ka-hidden" id="blogStopBtn" onclick="blogStopGenerate()">⏹ 중지</button>
       </div>
       <div id="blogProgress" class="ka-hidden" style="margin-top:12px">
@@ -1361,7 +1360,6 @@ function renderCafe(mc) {
     <div class="ka-section">
       <div class="ka-btn-group">
         <button class="ka-btn ka-btn-primary" id="cafeGenBtn" onclick="cafeGenerate()">🚀 생성 시작</button>
-        <button class="ka-btn" onclick="buildPromptCopy('cafe')">📋 프롬프트 복사</button>
         <button class="ka-btn ka-btn-danger ka-hidden" id="cafeStopBtn" onclick="cafeStopGenerate()">⏹ 중지</button>
       </div>
       <div id="cafeProgress" class="ka-hidden" style="margin-top:12px">
@@ -1826,7 +1824,6 @@ function renderViral(mc) {
     <div class="ka-section">
       <div class="ka-btn-group">
         <button class="ka-btn ka-btn-primary" id="viralGenBtn" onclick="viralGenerate()">🚀 생성 시작</button>
-        <button class="ka-btn" onclick="buildPromptCopy('viral')">📋 프롬프트 복사</button>
         <button class="ka-btn ka-btn-danger ka-hidden" id="viralStopBtn" onclick="viralStopGenerate()">⏹ 중지</button>
       </div>
       <div id="viralProgress" class="ka-hidden" style="margin-top:12px">
@@ -2313,7 +2310,6 @@ function renderJisikin(mc) {
     <div class="ka-section">
       <div class="ka-btn-group">
         <button class="ka-btn ka-btn-primary" id="jisGenBtn" onclick="jisGenerate()">🚀 생성 시작</button>
-        <button class="ka-btn" onclick="buildPromptCopy('jisikin')">📋 프롬프트 복사</button>
         <button class="ka-btn ka-btn-danger ka-hidden" id="jisStopBtn" onclick="jisStopGenerate()">⏹ 중지</button>
       </div>
       <div id="jisProgress" class="ka-hidden" style="margin-top:12px">
@@ -4595,7 +4591,6 @@ function renderCommunity(mc) {
     <div class="ka-section">
       <div class="ka-btn-group">
         <button class="ka-btn ka-btn-primary" id="cmtGenBtn" onclick="cmtGenerate()">🚀 생성 시작</button>
-        <button class="ka-btn" onclick="buildPromptCopy('community')">📋 프롬프트 복사</button>
         <button class="ka-btn ka-btn-danger ka-hidden" id="cmtStopBtn" onclick="cmtStopGen()">⏹ 중지</button>
       </div>
       <div id="cmtProgress" class="ka-hidden" style="margin-top:12px">
@@ -5368,7 +5363,7 @@ function renderPowerContent(mc) {
     + '</div>'
     + '<select class="ka-input" id="pcDeficit" style="margin-top:8px;width:160px"><option value="-3">결핍강도 -3</option><option value="-4" selected>결핍강도 -4</option><option value="-5">결핍강도 -5</option></select></div>'
     // 생성 버튼
-    + '<div class="ka-section"><div class="ka-btn-group"><button class="ka-btn ka-btn-primary" id="pcGenBtn" onclick="pcGenerate()">🚀 생성 시작</button><button class="ka-btn" onclick="buildPromptCopy(\'powercontent\')">📋 프롬프트 복사</button></div>'
+    + '<div class="ka-section"><button class="ka-btn ka-btn-primary" id="pcGenBtn" onclick="pcGenerate()">🚀 생성 시작</button>'
     + '<div id="pcProgress" class="ka-hidden" style="margin-top:8px"><div class="ka-progress-text" id="pcProgressMsg"></div></div></div>'
     // 결과
     + '<div id="pcResult" class="ka-hidden">'
@@ -7917,124 +7912,6 @@ function tcSaveChannelsNum(totalTraffic) {
   tcRenderChannels(totalTraffic);
 }
 
-// ══════════════════════════════ 프롬프트 복사 (claude.ai용) ══════════════════════════════
-
-async function buildPromptCopy(channel) {
-  // 채널별 입력 수집
-  let bodyData = {};
-  const prod = JSON.parse(localStorage.getItem('blogProduct') || '{}');
-
-  if (channel === 'blog') {
-    const kws = blogGetKeywords ? blogGetKeywords() : [];
-    if (!kws.length) return showToast('키워드를 입력하세요');
-    bodyData = { keywords: kws, product: prod };
-  } else if (channel === 'cafe') {
-    const kws = cafeGetKeywords ? cafeGetKeywords() : [];
-    if (!kws.length) return showToast('키워드를 입력하세요');
-    bodyData = { keywords: kws, urls: [], product: prod, settings: {} };
-  } else if (channel === 'jisikin') {
-    const kws = jisGetKeywords ? jisGetKeywords() : [];
-    if (!kws.length) return showToast('키워드를 입력하세요');
-    bodyData = { keywords: kws, product: prod };
-  } else if (channel === 'viral') {
-    const category = typeof viralGetCategory === 'function' ? viralGetCategory() : '건강카페';
-    bodyData = { category, product: { name: prod.name||'', brand_keyword: prod.brand_keyword||'', usp: prod.usp||'', target: prod.target||'', target_concern: prod.target_concern||'', ingredients: prod.ingredients||'', product_category: prod.product_category||'' }};
-  } else if (channel === 'community') {
-    const commSel = document.getElementById('cmtCommunity');
-    const community = commSel && commSel.value === '직접입력' ? (document.getElementById('cmtCommunityCustom').value.trim()||'뽐뿌') : (commSel ? commSel.value : '뽐뿌');
-    const strategy = document.querySelector('input[name="cmtStrategy"]:checked')?.value || '1';
-    const keywords = (document.getElementById('cmtKeywords')?.value||'').split('\n').map(s=>s.trim()).filter(Boolean);
-    if (!keywords.length) return showToast('키워드를 입력하세요');
-    bodyData = { keywords, community, strategy, product: prod, appeal: document.getElementById('cmtAppeal')?.value||'', buying_one: document.getElementById('cmtBuyingOne')?.value||'', forbidden: document.getElementById('cmtProdForbidden')?.value||'' };
-  } else if (channel === 'powercontent') {
-    const keyword = document.getElementById('pcKeyword')?.value || '';
-    if (!keyword) return showToast('키워드를 입력하세요');
-    bodyData = {
-      keyword, stage: document.getElementById('pcStage')?.value || '3_정보습득',
-      appeal: document.getElementById('pcAppeal')?.value || '',
-      buying_thing: document.getElementById('pcBuying')?.value || '',
-      deficit_level: document.getElementById('pcDeficit')?.value || '-4',
-      product: prod, analysis: window._pcAnalysis || '',
-    };
-  }
-
-  // API 호출
-  showToast('프롬프트 생성 중... (크롤링+제목 포함)');
-  try {
-    const resp = await fetch(API + '/api/' + channel + '/build-prompt', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(bodyData)
-    });
-    const data = await resp.json();
-    if (data.error) { showToast(data.error, 'error'); return; }
-    showPromptModal(channel, data);
-  } catch(e) { showToast('프롬프트 생성 실패: ' + e.message, 'error'); }
-}
-
-function showPromptModal(channel, data) {
-  // 기존 모달 제거
-  let old = document.getElementById('promptCopyModal');
-  if (old) old.remove();
-
-  let steps = [];
-  if (data.results) {
-    // 블로그/카페/지식인/커뮤니티: results 배열
-    data.results.forEach((r, i) => {
-      const kw = r.keyword || '';
-      const title = r.title || r.q_title || '';
-      // 각 프롬프트 종류
-      if (r.body_prompt) steps.push({ label: kw + ' — 본문', title, combined: r.body_prompt.combined, analysis: r.analysis });
-      if (r.comments_prompt) steps.push({ label: kw + ' — 댓글', combined: r.comments_prompt.combined });
-      if (r.answers_prompt) steps.push({ label: kw + ' — 답변', title, q_body: r.q_body, combined: r.answers_prompt.combined });
-      if (r.post_prompt) steps.push({ label: kw + ' — 침투글', combined: r.post_prompt.combined });
-      if (r.post_prompt && r.comments_prompt) {} // 이미 위에서 추가
-    });
-  } else if (data.steps) {
-    // 바이럴: steps 배열
-    data.steps.forEach(s => steps.push({ label: s.name, combined: s.combined }));
-  } else if (data.body_prompt) {
-    // 파워컨텐츠
-    steps.push({ label: '광고소재: ' + (data.ad_title||''), title: data.ad_title, desc: data.ad_desc, combined: data.body_prompt.combined });
-  }
-
-  const modal = document.createElement('div');
-  modal.id = 'promptCopyModal';
-  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
-
-  let html = '<div style="background:var(--bg-primary);border-radius:12px;max-width:800px;width:100%;max-height:90vh;overflow-y:auto;padding:24px">';
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0;font-size:18px">📋 claude.ai용 프롬프트</h2><button onclick="this.closest(\'#promptCopyModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-secondary)">&times;</button></div>';
-
-  steps.forEach((s, i) => {
-    html += '<div style="margin-bottom:16px;padding:16px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border-color)">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-    html += '<strong style="font-size:14px">' + escapeHtml(s.label) + '</strong>';
-    html += '<button class="ka-btn ka-btn-primary" style="font-size:12px;padding:4px 12px" onclick="promptCopyToClipboard(' + i + ')">📋 복사</button>';
-    html += '</div>';
-    if (s.title) html += '<div style="font-size:12px;color:var(--accent-blue);margin-bottom:4px">생성된 제목: ' + escapeHtml(s.title) + '</div>';
-    if (s.desc) html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">생성된 설명: ' + escapeHtml(s.desc) + '</div>';
-    if (s.q_body) html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">생성된 질문본문: ' + escapeHtml(s.q_body).substring(0, 100) + '...</div>';
-    if (s.analysis) html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">분석: 사진 ' + s.analysis.photo_count + '장, 키워드 ' + s.analysis.keyword_repeat + '회, 글자수 ' + s.analysis.char_count + '자</div>';
-    html += '<textarea id="promptText' + i + '" style="width:100%;height:120px;font-size:12px;font-family:monospace;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:8px;color:var(--text-primary);resize:vertical" readonly>' + escapeHtml(s.combined) + '</textarea>';
-    html += '</div>';
-  });
-
-  html += '<div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">복사한 프롬프트를 claude.ai에 붙여넣어 실행하세요</div>';
-  html += '</div>';
-  modal.innerHTML = html;
-  document.body.appendChild(modal);
-}
-
-function promptCopyToClipboard(idx) {
-  const ta = document.getElementById('promptText' + idx);
-  if (!ta) return;
-  navigator.clipboard.writeText(ta.value).then(() => {
-    showToast('클립보드에 복사 완료 → claude.ai에 붙여넣기');
-  }).catch(() => {
-    ta.select();
-    document.execCommand('copy');
-    showToast('클립보드에 복사 완료');
-  });
-}
 
 </script>
 </body>
