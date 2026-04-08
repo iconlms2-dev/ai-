@@ -108,6 +108,18 @@ def _get_default_prompt(channel):
         from src.api.viral import _build_viral_stage3_prompt
         sys_p, _ = _build_viral_stage3_prompt('타겟층', '고민키워드', '테스트키워드', '테스트제품', '핵심특징', '성분', '건강기능식품')
         return sys_p
+    elif channel == '파워컨텐츠_광고소재':
+        from src.api.powercontent import _build_pc_ad_prompt
+        sys_p, _ = _build_pc_ad_prompt('테스트', '소구점', '구매원씽', dummy_product, '부정편향', '')
+        return sys_p
+    elif channel == '파워컨텐츠_본문':
+        from src.api.powercontent import _build_pc_body_prompt
+        sys_p, _ = _build_pc_body_prompt('테스트', '3_정보습득', '소구점', '구매원씽', '-4', dummy_product, '광고제목', '광고설명', '{}')
+        return sys_p
+    elif channel == '파워컨텐츠_분석':
+        from src.api.powercontent import _build_pc_analysis_prompt
+        sys_p, _ = _build_pc_analysis_prompt('레퍼런스 본문 텍스트')
+        return sys_p
     return ''
 
 
@@ -170,6 +182,15 @@ def _get_full_prompt(channel):
         elif channel == '카페바이럴_침투글':
             from src.api.viral import _build_viral_stage3_prompt
             return _build_viral_stage3_prompt('타겟층', '고민키워드', '테스트키워드', '테스트제품', '핵심특징', '성분', '건강기능식품')
+        elif channel == '파워컨텐츠_광고소재':
+            from src.api.powercontent import _build_pc_ad_prompt
+            return _build_pc_ad_prompt('테스트', '소구점', '구매원씽', dummy_product, '부정편향', '')
+        elif channel == '파워컨텐츠_본문':
+            from src.api.powercontent import _build_pc_body_prompt
+            return _build_pc_body_prompt('테스트', '3_정보습득', '소구점', '구매원씽', '-4', dummy_product, '광고제목', '광고설명', '{}')
+        elif channel == '파워컨텐츠_분석':
+            from src.api.powercontent import _build_pc_analysis_prompt
+            return _build_pc_analysis_prompt('레퍼런스 본문 텍스트')
     except Exception as e:
         raise e
     return '', ''
@@ -186,6 +207,7 @@ async def prompt_test_channels():
         '지식인_질문제목', '지식인_질문본문', '지식인_답변',
         '유튜브댓글', '틱톡', '커뮤니티',
         '카페바이럴_일상글', '카페바이럴_고민글', '카페바이럴_침투글',
+        '파워컨텐츠_광고소재', '파워컨텐츠_본문', '파워컨텐츠_분석',
         '쓰레드_일상글', '쓰레드_물길글_셔플', '쓰레드_물길글_연민', '쓰레드_물길글_후기',
     ]
     return {'channels': channels}
