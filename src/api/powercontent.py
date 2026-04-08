@@ -200,6 +200,61 @@ async def pc_analyze(request: Request):
     return {'raw_text': raw_text[:5000], 'analysis': analysis}
 
 
+@router.post("/build-prompt")
+async def pc_build_prompt(request: Request):
+    """파워컨텐츠 프롬프트만 생성 (광고소재까지 서버, 본문은 claude.ai용)"""
+    body = await request.json()
+    keyword = body.get('keyword', '')
+    stage = body.get('stage', '3_정보습득')
+    appeal = body.get('appeal', '')
+    buying_thing = body.get('buying_thing', '')
+    deficit_level = body.get('deficit_level', '-4')
+    product = body.get('product', {})
+    analysis = body.get('analysis', '')
+    forbidden = product.get('forbidden', '')
+    loop = asyncio.get_running_loop()
+
+    # 구조분석에서 hooking_type/total_chars 추출
+    hooking_type = '부정편향'
+    try:
+        m = re.search(r'"hooking_type"\s*:\s*"([^"]+)"', analysis)
+        if m: hooking_type = m.group(1)
+    except (AttributeError, ValueError): pass
+    target_chars = 3000
+    try:
+        m = re.search(r'"total_chars"\s*:\s*(\d+)', analysis)
+        if m: target_chars = max(2500, int(m.group(1)))
+    except (AttributeError, ValueError): pass
+
+    # 광고 소재 생성 (API — 짧아서 비용 미미)
+    sys2, usr2 = _build_pc_ad_prompt(keyword, appeal, buying_thing, product, hooking_type, forbidden)
+    ad_raw = await loop.run_in_executor(executor, call_claude, sys2, usr2)
+    ad_title = ad_desc = ''
+    for line in ad_raw.split('\n'):
+        line = line.strip()
+        if line.startswith('제목:') or line.startswith('제목 :'):
+            ad_title = line.split(':', 1)[1].strip()
+        elif line.startswith('설명:') or line.startswith('설명 :'):
+            ad_desc = line.split(':', 1)[1].strip()
+    if not ad_title:
+        ad_title = ad_raw.split('\n')[0].strip()[:28]
+
+    # 본문 프롬프트 조립 (API 호출 X)
+    sys3, usr3 = _build_pc_body_prompt(keyword, stage, appeal, buying_thing, deficit_level, product, ad_title, ad_desc, analysis)
+    combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
+
+    return {
+        'ad_title': ad_title,
+        'ad_desc': ad_desc,
+        'target_chars': target_chars,
+        'body_prompt': {
+            'system_prompt': sys3,
+            'user_prompt': usr3,
+            'combined': combined,
+        }
+    }
+
+
 @router.post("/generate")
 async def pc_generate(request: Request):
     """파워컨텐츠 생성 (SSE): 구조분석 완료 후 -> 광고소재 -> 본문"""

@@ -537,6 +537,67 @@ async def cafe_notion_keywords():
         return {'keywords': [], 'error': str(e)}
 
 
+@router.post("/build-prompt")
+async def cafe_build_prompt(request: Request):
+    """카페SEO 프롬프트만 생성 (크롤링+제목까지 서버, 본문/댓글은 claude.ai용)"""
+    body = await request.json()
+    keywords = body.get('keywords', [])
+    urls = body.get('urls', [])
+    product = body.get('product', {})
+    settings = body.get('settings', {})
+    loop = asyncio.get_running_loop()
+    results = []
+    url_list = [u.strip() for u in urls if u.strip()] if urls else []
+
+    for i, kw_data in enumerate(keywords):
+        kw = kw_data['keyword']
+        url = url_list[i] if i < len(url_list) else ''
+        original_title = ''
+        original_body = ''
+
+        # 상위글 분석
+        cafe_analysis = await loop.run_in_executor(executor, _analyze_top_for_cafe, kw)
+        kw_settings = {**settings}
+        kw_settings['photo_count'] = cafe_analysis['photo_count']
+        kw_settings['repeat_count'] = cafe_analysis['keyword_repeat']
+        kw_settings['char_target'] = cafe_analysis['char_count']
+
+        # 경쟁사 크롤링
+        if url:
+            crawled = await loop.run_in_executor(executor, _crawl_cafe_article, url)
+            original_title = crawled['title']
+            original_body = crawled['body']
+        else:
+            found = await loop.run_in_executor(executor, _search_cafe_top_article, kw)
+            if found['url']:
+                crawled = await loop.run_in_executor(executor, _crawl_cafe_article, found['url'])
+                original_title = crawled['title'] or found['title']
+                original_body = crawled['body']
+
+        # 제목 생성 (API)
+        sys1, usr1 = _build_cafe_title_prompt(kw, original_title)
+        title = await loop.run_in_executor(executor, call_claude, sys1, usr1)
+        title = title.strip().split('\n')[0].strip()
+
+        # 본문 프롬프트 조립
+        sys2, usr2 = _build_cafe_body_prompt(kw, title, original_body, kw_settings, product)
+        combined_body = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys2}\n\n---\n\n{usr2}"
+
+        # 댓글 프롬프트 조립
+        sys3, usr3 = _build_cafe_comments_prompt(kw, '(본문은 위에서 생성한 결과를 넣어주세요)', product.get('brand_keyword', ''), '')
+        combined_comments = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
+
+        results.append({
+            'keyword': kw,
+            'title': title,
+            'analysis': {'photo_count': kw_settings['photo_count'], 'keyword_repeat': kw_settings['repeat_count'], 'char_count': kw_settings['char_target']},
+            'body_prompt': {'system_prompt': sys2, 'user_prompt': usr2, 'combined': combined_body},
+            'comments_prompt': {'system_prompt': sys3, 'user_prompt': usr3, 'combined': combined_comments},
+        })
+
+    return {'results': results}
+
+
 @router.post("/generate")
 async def cafe_generate(request: Request):
     """카페SEO 원고 생성 (SSE): 제목→본문→댓글"""

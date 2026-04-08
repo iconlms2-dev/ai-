@@ -421,6 +421,51 @@ async def blog_fix_forbidden(request: Request):
     return {'fixed_text': fixed, 'replacements': replacements}
 
 
+@router.post("/build-prompt")
+async def blog_build_prompt(request: Request):
+    """블로그 프롬프트만 생성 (크롤링+제목까지 서버, 본문은 claude.ai용 복사)"""
+    body = await request.json()
+    keywords = body.get('keywords', [])
+    product = body.get('product', {})
+    loop = asyncio.get_running_loop()
+    results = []
+
+    for kw_data in keywords:
+        kw = kw_data['keyword']
+        stage = kw_data.get('stage', '3_정보습득')
+
+        # 1. 상위글 분석 (크롤링)
+        analysis = await loop.run_in_executor(executor, _analyze_top_for_blog, kw)
+        pc = analysis['photo_count']
+        kr = analysis['keyword_repeat']
+        ct = analysis.get('char_count', 0)
+
+        # 2. 제목 생성 (API — 짧아서 비용 미미)
+        title_sys, title_usr = _build_blog_title_prompt(kw, product)
+        title_raw = await loop.run_in_executor(executor, call_claude, title_sys, title_usr)
+        title = title_raw.strip().replace('제목:', '').replace('제목 :', '').strip()
+        if '\n' in title:
+            title = title.split('\n')[0].strip()
+
+        # 3. 본문 프롬프트 조립 (API 호출 X)
+        body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
+        combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{body_sys}\n\n---\n\n{body_usr}"
+
+        results.append({
+            'keyword': kw,
+            'stage': stage,
+            'title': title,
+            'analysis': {'photo_count': pc, 'keyword_repeat': kr, 'char_count': ct},
+            'body_prompt': {
+                'system_prompt': body_sys,
+                'user_prompt': body_usr,
+                'combined': combined,
+            }
+        })
+
+    return {'results': results}
+
+
 @router.post("/generate")
 async def blog_generate(request: Request):
     """블로그 원고 생성 (SSE)"""

@@ -250,6 +250,46 @@ async def jisikin_notion_keywords():
     return {'keywords': results_all}
 
 
+@router.post("/build-prompt")
+async def jisikin_build_prompt(request: Request):
+    """지식인 프롬프트만 생성 (질문제목/본문까지 서버, 답변은 claude.ai용)"""
+    body = await request.json()
+    keywords = body.get('keywords', [])
+    product = body.get('product', {})
+    loop = asyncio.get_running_loop()
+    results = []
+
+    for kw_data in keywords:
+        kw = kw_data['keyword']
+
+        # 질문 제목 생성 (API)
+        sys1, usr1 = _build_jisikin_title_prompt(kw, product)
+        q_title = await loop.run_in_executor(executor, call_claude, sys1, usr1)
+        q_title = q_title.strip().split('\n')[0].strip().strip('"').strip()
+
+        # 질문 본문 생성 (API)
+        sys2, usr2 = _build_jisikin_body_prompt(kw, product)
+        q_body = await loop.run_in_executor(executor, call_claude, sys2, usr2)
+        q_body = q_body.strip()
+
+        # 답변 프롬프트 조립 (API 호출 X)
+        sys3, usr3 = _build_jisikin_answers_prompt(kw, q_title, q_body, product)
+        combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
+
+        results.append({
+            'keyword': kw,
+            'q_title': q_title,
+            'q_body': q_body,
+            'answers_prompt': {
+                'system_prompt': sys3,
+                'user_prompt': usr3,
+                'combined': combined,
+            }
+        })
+
+    return {'results': results}
+
+
 @router.post("/generate")
 async def jisikin_generate(request: Request):
     """지식인 질문+답변 생성 (SSE)"""

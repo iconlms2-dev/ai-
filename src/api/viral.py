@@ -401,6 +401,45 @@ def _parse_viral_stage3(raw):
 
 # ───────────────────────────── ENDPOINTS ─────────────────────────────
 
+@router.post("/build-prompt")
+async def viral_build_prompt(request: Request):
+    """카페바이럴 프롬프트만 생성 (3단계 각각 claude.ai용)"""
+    body = await request.json()
+    category = body.get('category', '')
+    product = body.get('product', {})
+    results = []
+
+    # 1단계: 일상글
+    sys1, usr1 = _build_viral_stage1_prompt(category, product.get('target', ''), '')
+    results.append({
+        'name': '1단계 일상글',
+        'system_prompt': sys1, 'user_prompt': usr1,
+        'combined': f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys1}\n\n---\n\n{usr1}",
+    })
+
+    # 2단계: 고민글
+    sys2, usr2 = _build_viral_stage2_prompt(category, product.get('target_concern', ''), product.get('product_category', ''))
+    results.append({
+        'name': '2단계 고민글',
+        'system_prompt': sys2, 'user_prompt': usr2,
+        'combined': f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys2}\n\n---\n\n{usr2}",
+    })
+
+    # 3단계: 침투글
+    sys3, usr3 = _build_viral_stage3_prompt(
+        category, product.get('target_concern', ''),
+        product.get('brand_keyword', ''), product.get('name', ''),
+        product.get('usp', ''), product.get('ingredients', ''),
+        product.get('product_category', ''))
+    results.append({
+        'name': '3단계 침투글+댓글',
+        'system_prompt': sys3, 'user_prompt': usr3,
+        'combined': f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}",
+    })
+
+    return {'steps': results}
+
+
 @router.post("/generate")
 async def viral_generate(request: Request):
     """카페바이럴 세트 생성 (SSE)"""

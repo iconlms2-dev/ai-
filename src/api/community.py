@@ -357,6 +357,43 @@ def _build_community_comments_prompt(community, post_body, brand_kw):
 
 # ── 엔드포인트 ──
 
+@router.post("/build-prompt")
+async def community_build_prompt(request: Request):
+    """커뮤니티 프롬프트만 생성 (침투글+댓글 claude.ai용)"""
+    body = await request.json()
+    keywords = body.get('keywords', [])
+    community = body.get('community', '')
+    strategy = body.get('strategy', '1')
+    product = body.get('product', {})
+    appeal = body.get('appeal', '')
+    buying_one = body.get('buying_one', '')
+    forbidden = body.get('forbidden', '')
+    results = []
+
+    for kw in keywords:
+        keyword = kw if isinstance(kw, str) else kw.get('keyword', '')
+
+        # 침투글 프롬프트
+        sys1, usr1 = _build_community_post_prompt(community, strategy, keyword, appeal, buying_one, product, forbidden)
+        # 댓글 프롬프트
+        sys2, usr2 = _build_community_comments_prompt(community, '(침투글 본문은 위에서 생성한 결과를 넣어주세요)', product.get('brand_keyword', ''))
+
+        results.append({
+            'keyword': keyword,
+            'community': community,
+            'post_prompt': {
+                'system_prompt': sys1, 'user_prompt': usr1,
+                'combined': f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys1}\n\n---\n\n{usr1}",
+            },
+            'comments_prompt': {
+                'system_prompt': sys2, 'user_prompt': usr2,
+                'combined': f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys2}\n\n---\n\n{usr2}",
+            },
+        })
+
+    return {'results': results}
+
+
 @router.post("/generate")
 async def community_generate(request: Request):
     body = await request.json()
