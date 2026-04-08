@@ -37,12 +37,16 @@ def _prompt_load_overrides():
 # ── 상위글 분석 ──
 
 def _analyze_blog_article(url, keyword):
-    """개별 블로그 글 분석: 사진수, 키워드반복수"""
+    """개별 블로그 글 분석: 사진수, 키워드반복수, 글자수"""
     try:
+        # 네이버 블로그 데스크톱 URL은 iframe 구조라 본문이 비어 있음 → 모바일 URL로 변환
+        mobile_url = url.replace('blog.naver.com', 'm.blog.naver.com')
         headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'}
-        r = req.get(url, headers=headers, timeout=10)
+        r = req.get(mobile_url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
-        body = soup.get_text()
+        # 본문 컨테이너 우선 탐색 (네이버 모바일 블로그 구조)
+        content_el = soup.select_one('div.se-main-container') or soup.select_one('div#viewTypeSelector') or soup
+        body = content_el.get_text()
         char_count = len(body.replace(' ', '').replace('\n', '').replace('\t', ''))
         photo_count = len(soup.find_all('img', src=re.compile(r'postfiles|blogfiles|phinf')))
         kw_repeat = body.lower().count(keyword.lower())
