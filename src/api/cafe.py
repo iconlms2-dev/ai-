@@ -74,7 +74,8 @@ def _analyze_cafe_article(url, keyword):
         kw_repeat = body.lower().count(keyword.lower())
         char_count = len(body.replace(' ', '').replace('\n', ''))
         return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1), 'char_count': char_count}
-    except Exception:
+    except Exception as e:
+        print(f"[_analyze_cafe_article] 오류: {e}")
         return None
 
 
@@ -106,7 +107,8 @@ def _analyze_top_for_cafe(keyword):
             'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
             'char_count': max(round(sum(r['char_count'] for r in results) / len(results)), 800)
         }
-    except Exception:
+    except Exception as e:
+        print(f"[_analyze_top_for_cafe] 오류: {e}")
         return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
 
 
@@ -501,6 +503,109 @@ def _build_cafe_comments_prompt(keyword, body_text, brand_keyword, alternatives=
     return system, user
 
 
+def _build_cafe_replies_prompt(keyword, body_text, comments_text, brand_keyword):
+    """답글 10개 생성 프롬프트 — 게시글 작성자 관점에서 각 댓글에 1:1 답글."""
+    system = """역할:
+너는 네이버 카페 게시글 작성자야. 네 글에 달린 댓글 하나하나에 자연스럽고 친근한 답글을 작성해.
+
+[핵심 원칙]
+1. 답글 작성자 = 게시글 작성자. 게시글의 흐름, 감정, 메시지와 싱크(일관성)를 맞추는 것이 가장 중요.
+2. 톤: 30~40대 여성 커뮤니티 말투. 부드럽고 진솔하며 친근하게.
+3. 이모티콘(ㅎㅎ, ㅠㅠ, 🙂 등)은 상황에 맞게 적절히 사용.
+4. 답글당 2~4문장. 짧고 자연스럽게.
+5. "나만의 키워드"는 답글 전체 중 1~2회만 자연스럽게 노출. 과하면 광고 티남.
+6. 광고 어투 금지: "강추", "꼭 사세요", "인생템" 등 과장 표현 X.
+7. 게시글에서 "힘들다"고 했는데 답글에서 "이거 써보세요~ 진짜 좋아요!"처럼 앞뒤 안 맞는 답글 금지.
+
+[답글 유형별 톤]
+- 공감 댓글(1~2번) → "맞아요ㅠㅠ 저도 그랬어요" 식으로 공감 + 경험 공유
+- 정보 제공 댓글(3~4번) → "오 그런 게 있나요? 저도 찾아봐야겠어요" 식으로 관심 표현
+- 제품 언급 댓글(5~7번) → "그거 어디서 구매하셨어요?" / "저도 요즘 챙겨먹고 있어요" 식으로 경험 나눔
+- 마무리 댓글(8~10번) → "댓글 보니까 힘이 나네요ㅎㅎ" / "다들 건강 챙기시는 거 보니 저도 힘내볼게요" 식으로 감사+의지
+
+[출력 규칙]
+- 댓글 원문을 먼저 쓰고, 바로 다음 줄에 답글을 작성
+- 형식:
+1. 댓글 원문
+→ 답글 내용
+
+2. 댓글 원문
+→ 답글 내용
+
+(총 10개)"""
+
+    user = f"""[게시글 본문]
+{body_text[:2000]}
+
+--
+[댓글 목록]
+{comments_text[:3000]}
+
+- 메인 키워드: {keyword}
+- 나만의 키워드 (답글 중 1~2회만 노출): {brand_keyword or keyword}"""
+
+    return system, user
+
+
+def _build_cafe_polish_prompt(keyword, title, body_text, comments_text, brand_keyword, forbidden_words=''):
+    """금칙어 대체 + 타사→자사 치환 + 문체 보정 프롬프트."""
+    system = """역할:
+너는 네이버 카페 원고 교정 전문가야. AI가 생성한 초안을 사람이 쓴 것처럼 자연스럽게 다듬는 작업을 수행해.
+
+[작업 항목]
+
+1. 금칙어 검사 + 자동 대체
+   - 금칙어가 발견되면 자연스러운 대체어로 바꿔줘
+   - 단, 상위노출 키워드가 금칙어에 해당하면 그대로 유지
+   - 자주 나오는 금칙어 대체 예시:
+     병원 → 동네 / 진료 → 진찰 / 가격 → 금액
+     하더라구요 → 했어요 / 바르고 자도 → 바르구 자도
+
+2. 타사 제품/브랜드 → 자사 키워드 치환
+   - 본문/댓글에서 타사 제품명이나 브랜드명이 있으면 "나만의 키워드"로 자연스럽게 치환
+   - 예: "혹시 메디힐 시카크림 써보신 분?" → "요즘 (나만의 키워드) 좋다는데 써보신 분?"
+
+3. 문체 보정
+   - 광고 어투 → 자연스러운 후기/체험담 톤으로
+   - 딱딱한 문장 → 편안한 대화체로
+   - 키워드 반복 구조는 유지하되 문장 흐름만 자연스럽게
+
+4. 제목 강화
+   - 직관적+감정형으로 보강
+   - 나이/성별 표시 가능 (예: "(30대 여자) 출산탈모 때문에 미치겠어요ㅠㅠ")
+
+[출력 형식]
+JSON으로 출력:
+{
+  "title": "보정된 제목",
+  "body": "보정된 본문",
+  "comments": "보정된 댓글",
+  "changes": [
+    {"type": "금칙어", "before": "원문", "after": "수정문", "reason": "사유"},
+    {"type": "타사치환", "before": "원문", "after": "수정문", "reason": "사유"},
+    {"type": "문체", "before": "원문", "after": "수정문", "reason": "사유"}
+  ]
+}
+- changes에 변경 내역을 모두 기록
+- 변경사항이 없으면 changes를 빈 배열로"""
+
+    user = f"""[원고 정보]
+- 메인 키워드: {keyword}
+- 나만의 키워드 (자사 제품): {brand_keyword or keyword}
+- 금칙어 목록: {forbidden_words or '(없음)'}
+
+[제목]
+{title}
+
+[본문]
+{body_text[:3000]}
+
+[댓글]
+{comments_text[:2000]}"""
+
+    return system, user
+
+
 # ── 엔드포인트 ──
 
 @router.get("/notion-keywords")
@@ -587,12 +692,17 @@ async def cafe_build_prompt(request: Request):
         sys3, usr3 = _build_cafe_comments_prompt(kw, '(본문은 위에서 생성한 결과를 넣어주세요)', product.get('brand_keyword', ''), product.get('alternatives', ''))
         combined_comments = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
 
+        # 답글 프롬프트 조립
+        sys4, usr4 = _build_cafe_replies_prompt(kw, '(본문+댓글 생성 후 입력)', '(댓글 생성 결과를 넣어주세요)', product.get('brand_keyword', ''))
+        combined_replies = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys4}\n\n---\n\n{usr4}"
+
         results.append({
             'keyword': kw,
             'title': title,
             'analysis': {'photo_count': kw_settings['photo_count'], 'keyword_repeat': kw_settings['repeat_count'], 'char_count': kw_settings['char_target']},
             'body_prompt': {'system_prompt': sys2, 'user_prompt': usr2, 'combined': combined_body},
             'comments_prompt': {'system_prompt': sys3, 'user_prompt': usr3, 'combined': combined_comments},
+            'replies_prompt': {'system_prompt': sys4, 'user_prompt': usr4, 'combined': combined_replies},
         })
 
     return {'results': results}
@@ -664,6 +774,12 @@ async def cafe_generate(request: Request):
             comments = await loop.run_in_executor(executor, call_claude, sys3, usr3)
             comments = comments.strip()
 
+            # STEP 3b: 답글 10개
+            yield _sse({'type': 'progress', 'msg': '[%d/%d] %s — 답글 생성 중...' % (i+1, total, kw), 'cur': i, 'total': total})
+            sys_r, usr_r = _build_cafe_replies_prompt(kw, cafe_body, comments, product.get('brand_keyword', ''))
+            replies = await loop.run_in_executor(executor, call_claude, sys_r, usr_r)
+            replies = replies.strip()
+
             # STEP 4: 타겟 맞춤 사진 수집 (샤오홍슈)
             target = product.get('target', '')
             photo_count = kw_settings.get('photo_count', 8)
@@ -679,13 +795,39 @@ async def cafe_generate(request: Request):
             # 이미지 파일명 목록 (프론트에 전달)
             image_filenames = [os.path.basename(p) for p in image_paths]
 
+            # STEP 5: Polish (금칙어 대체 + 타사치환 + 문체 보정)
+            yield _sse({'type': 'progress', 'msg': '[%d/%d] %s — 원고 보정(Polish) 중...' % (i+1, total, kw), 'cur': i, 'total': total})
+            sys_pol, usr_pol = _build_cafe_polish_prompt(
+                kw, title, cafe_body, comments,
+                product.get('brand_keyword', ''), product.get('forbidden', ''),
+            )
+            polish_raw = await loop.run_in_executor(executor, call_claude, sys_pol, usr_pol)
+            polish_changes = []
+            try:
+                json_match = re.search(r'\{[\s\S]*\}', polish_raw)
+                if json_match:
+                    polish_data = json.loads(json_match.group())
+                    polish_changes = polish_data.get('changes', [])
+                    # Polish 결과 적용 (변경사항이 있을 때만)
+                    if polish_data.get('title'):
+                        title = polish_data['title']
+                    if polish_data.get('body'):
+                        cafe_body = polish_data['body']
+                    if polish_data.get('comments'):
+                        comments = polish_data['comments']
+            except (json.JSONDecodeError, ValueError):
+                pass  # polish 실패 시 원본 유지
+            yield _sse({'type': 'progress', 'msg': '[%d/%d] %s — 보정 완료 (변경 %d건)' % (i+1, total, kw, len(polish_changes)), 'cur': i, 'total': total})
+
             result = {
                 'keyword': kw, 'title': title, 'body': cafe_body, 'comments': comments,
+                'replies': replies,
                 'original_title': original_title, 'original_body': original_body,
                 'page_id': kw_data.get('page_id', ''),
                 'photo_count': kw_settings.get('photo_count', 8),
                 'repeat_count': kw_settings.get('repeat_count', 5),
                 'images': image_filenames,
+                'polish_changes': polish_changes,
             }
 
             # ── 검수 단계 ──
@@ -734,9 +876,24 @@ async def cafe_save_notion(request: Request):
 
     payload = {'parent': {'database_id': CONTENT_DB_ID}, 'properties': props}
 
-    # 본문 + 댓글을 페이지 children으로
+    # 본문 + 댓글 + 답글 + Polish 변경점을 페이지 children으로
+    text_blocks = [
+        body.get('body', ''),
+        '---\n댓글 10개:\n' + body.get('comments', ''),
+    ]
+    if body.get('replies'):
+        text_blocks.append('---\n답글 10개:\n' + body['replies'])
+    if body.get('polish_changes'):
+        changes_text = '---\nPolish 변경점:\n'
+        for ch in body['polish_changes']:
+            if isinstance(ch, dict):
+                changes_text += f"- [{ch.get('type','')}] {ch.get('before','')} → {ch.get('after','')} ({ch.get('reason','')})\n"
+            else:
+                changes_text += f"- {ch}\n"
+        text_blocks.append(changes_text)
+
     children = []
-    for text_block in [body.get('body', ''), '---\n댓글 10개:\n' + body.get('comments', '')]:
+    for text_block in text_blocks:
         paragraphs = [p.strip() for p in text_block.split('\n\n') if p.strip()]
         for para in paragraphs:
             for k in range(0, len(para), 2000):
@@ -760,6 +917,121 @@ async def cafe_temp_image(filename: str):
     if os.path.exists(fpath):
         return FileResponse(fpath, media_type="image/jpeg")
     return Response(status_code=404)
+
+
+@router.post("/polish")
+async def cafe_polish(request: Request):
+    """금칙어 대체 + 타사→자사 치환 + 문체 보정"""
+    body = await request.json()
+    keyword = body.get('keyword', '')
+    title = body.get('title', '')
+    body_text = body.get('body', '')
+    comments = body.get('comments', '')
+    product = body.get('product', {})
+    brand_keyword = product.get('brand_keyword', '')
+    forbidden = product.get('forbidden', '')
+
+    loop = asyncio.get_running_loop()
+    sys_p, usr_p = _build_cafe_polish_prompt(
+        keyword, title, body_text, comments, brand_keyword, forbidden,
+    )
+    try:
+        raw = await loop.run_in_executor(executor, call_claude, sys_p, usr_p)
+    except Exception as e:
+        print(f"[cafe_polish] AI 호출 오류: {e}")
+        return {
+            'polished_title': title, 'polished_body': body_text,
+            'polished_comments': comments, 'changes': [],
+            'original_title': title, 'original_body': body_text,
+            'original_comments': comments, 'error': str(e),
+        }
+
+    # JSON 파싱 시도
+    try:
+        # Claude 출력에서 JSON 블록 추출
+        json_match = re.search(r'\{[\s\S]*\}', raw)
+        if json_match:
+            result = json.loads(json_match.group())
+        else:
+            result = {'title': title, 'body': body_text, 'comments': comments, 'changes': []}
+    except (json.JSONDecodeError, ValueError):
+        result = {'title': title, 'body': body_text, 'comments': comments, 'changes': []}
+
+    return {
+        'polished_title': result.get('title', title),
+        'polished_body': result.get('body', body_text),
+        'polished_comments': result.get('comments', comments),
+        'changes': result.get('changes', []),
+        'original_title': title,
+        'original_body': body_text,
+        'original_comments': comments,
+    }
+
+
+@router.post("/match-photos")
+async def cafe_match_photos(request: Request):
+    """본문의 [어울릴 사진] 태그 파싱 → XHS 이미지 수집 매칭"""
+    body = await request.json()
+    body_text = body.get('body', '')
+    target = body.get('target', '')
+    existing_images = body.get('existing_images', [])
+
+    # 본문에서 [어울릴 사진: ...] 태그 파싱
+    photo_tags = re.findall(r'\[어울릴 사진[：:]?\s*([^\]]*)\]', body_text)
+    if not photo_tags:
+        photo_tags = re.findall(r'\[이미지\d*[：:]?\s*([^\]]*)\]', body_text)
+
+    need_count = max(len(photo_tags) - len(existing_images), 0)
+    new_images = []
+
+    if need_count > 0 and target:
+        try:
+            loop = asyncio.get_running_loop()
+            new_images_paths = await loop.run_in_executor(
+                executor, _collect_xhs_for_cafe, target, need_count,
+            )
+            new_images = [os.path.basename(p) for p in new_images_paths]
+        except Exception as e:
+            print(f"[cafe_match_photos] 이미지 수집 오류: {e}")
+            new_images = []
+
+    all_images = existing_images + new_images
+    # 태그별 매칭
+    matched = []
+    for i, tag in enumerate(photo_tags):
+        matched.append({
+            'tag_index': i,
+            'description': tag.strip(),
+            'image': all_images[i] if i < len(all_images) else None,
+        })
+
+    return {
+        'photo_tags': photo_tags,
+        'matched': matched,
+        'new_images': new_images,
+        'total_images': len(all_images),
+    }
+
+
+@router.post("/build-reply")
+async def cafe_build_reply(request: Request):
+    """답글 10개 생성"""
+    body = await request.json()
+    keyword = body.get('keyword', '')
+    body_text = body.get('body', '')
+    comments = body.get('comments', '')
+    product = body.get('product', {})
+    brand_keyword = product.get('brand_keyword', '')
+
+    loop = asyncio.get_running_loop()
+    sys_r, usr_r = _build_cafe_replies_prompt(keyword, body_text, comments, brand_keyword)
+    try:
+        replies = await loop.run_in_executor(executor, call_claude, sys_r, usr_r)
+    except Exception as e:
+        print(f"[cafe_build_reply] AI 호출 오류: {e}")
+        return {'replies': '', 'error': str(e)}
+
+    return {'replies': replies.strip()}
 
 
 @router.post("/docx")

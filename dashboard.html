@@ -399,7 +399,7 @@ async function streamSSE(url, options, onEvent, onError, onComplete) {
 const menuData = {
   'keyword-analysis': {icon:'🔍',title:'키워드 분석',category:'분석',flow:['키워드 입력','키워드 확장','검색량+경쟁강도+뷰탭 분석'],custom:true},
   'blog':{icon:'📝',title:'블로그 원고',category:'콘텐츠 생산',flow:['키워드/URL 입력','상위글 분석','블로그 본문+제목+이미지 자동 생성'],custom:true},
-  'cafe-seo':{icon:'☕',title:'카페SEO 원고',category:'콘텐츠 생산',flow:['경쟁사 카페글 URL','제목 리라이팅+본문','댓글 10개 생성'],custom:true},
+  'cafe-seo':{icon:'☕',title:'카페SEO 원고',category:'콘텐츠 생산',flow:['상위글 크롤링+분석','제목→본문→댓글+답글','사진 매칭','Polish(금칙어+치환)','검수→노션 저장'],custom:true},
   'cafe-viral':{icon:'🔥',title:'카페바이럴',category:'콘텐츠 생산',flow:['일상글','대화침투','제품인지+댓글'],custom:true},
   'jisikin':{icon:'❓',title:'지식인',category:'콘텐츠 생산',flow:['키워드 입력','질문제목+질문본문','답변 2개 세트 생성'],custom:true},
   'youtube':{icon:'▶️',title:'유튜브댓글',category:'콘텐츠 생산',flow:['영상 URL','스크립트 추출','바이럴 댓글 생성'],custom:true},
@@ -1548,6 +1548,7 @@ function cafeResultCard(d, idx) {
         <button class="ka-btn ka-btn-secondary" onclick="cafeCopy(${idx},'title')">📋 제목</button>
         <button class="ka-btn ka-btn-secondary" onclick="cafeCopy(${idx},'body')">📋 본문</button>
         <button class="ka-btn ka-btn-secondary" onclick="cafeCopy(${idx},'comments')">📋 댓글</button>
+        <button class="ka-btn ka-btn-secondary" onclick="cafeCopy(${idx},'replies')">📋 답글</button>
         <button class="ka-btn ka-btn-secondary" onclick="cafeSaveNotionOne(${idx})">💾 노션</button>
         <button class="ka-btn ka-btn-secondary" onclick="cafeDownloadDocx(${idx})">📄 docx</button>
       </div>
@@ -1557,26 +1558,37 @@ function cafeResultCard(d, idx) {
     <button onclick="cafeToggle(${idx},'body')" id="cafeToggleBody${idx}" style="background:none;border:none;color:var(--accent-blue);cursor:pointer;font-size:12px;margin-top:6px;font-family:inherit">▼ 본문 펼치기</button>
     <div id="cafeComments${idx}" style="display:none;margin-top:8px;padding:12px;background:rgba(91,124,250,0.05);border:1px solid rgba(91,124,250,0.1);border-radius:6px;font-size:13px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;max-height:300px;overflow-y:auto"></div>
     <button onclick="cafeToggle(${idx},'comments')" id="cafeToggleComments${idx}" style="background:none;border:none;color:var(--accent-blue);cursor:pointer;font-size:12px;margin-top:4px;font-family:inherit">▼ 댓글 10개 펼치기</button>
+    <div id="cafeReplies${idx}" style="display:none;margin-top:8px;padding:12px;background:rgba(76,175,80,0.05);border:1px solid rgba(76,175,80,0.1);border-radius:6px;font-size:13px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;max-height:300px;overflow-y:auto"></div>
+    <button onclick="cafeToggle(${idx},'replies')" id="cafeToggleReplies${idx}" style="background:none;border:none;color:var(--accent-green);cursor:pointer;font-size:12px;margin-top:4px;font-family:inherit">▼ 답글 10개 펼치기</button>
+    ${d.polish_changes && d.polish_changes.length ? '<div id="cafePolish'+idx+'" style="display:none;margin-top:8px;padding:12px;background:rgba(255,152,0,0.05);border:1px solid rgba(255,152,0,0.1);border-radius:6px;font-size:12px;line-height:1.6;color:var(--text-secondary);max-height:200px;overflow-y:auto"></div><button onclick="cafeToggle('+idx+',\'polish\')" id="cafeTogglePolish'+idx+'" style="background:none;border:none;color:#ff9800;cursor:pointer;font-size:12px;margin-top:4px;font-family:inherit">▼ Polish 변경점 '+d.polish_changes.length+'건 펼치기</button>' : ''}
   </div>`;
 }
 
 function cafeToggle(idx, type) {
-  const el = document.getElementById(type==='body'?'cafeBody'+idx:'cafeComments'+idx);
-  const btn = document.getElementById(type==='body'?'cafeToggleBody'+idx:'cafeToggleComments'+idx);
-  const label = type==='body'?'본문':'댓글 10개';
+  const idMap = {body:'cafeBody',comments:'cafeComments',replies:'cafeReplies',polish:'cafePolish'};
+  const labelMap = {body:'본문',comments:'댓글 10개',replies:'답글 10개',polish:'Polish 변경점'};
+  const el = document.getElementById(idMap[type]+idx);
+  const btn = document.getElementById('cafeToggle'+type.charAt(0).toUpperCase()+type.slice(1)+idx);
+  if (!el) return;
+  const label = labelMap[type] || type;
   if (el.style.display === 'none') {
     el.style.display = 'block';
-    el.textContent = type==='body'?CAFE.results[idx].body:CAFE.results[idx].comments;
-    btn.textContent = '▲ '+label+' 접기';
+    if (type === 'polish') {
+      const changes = CAFE.results[idx].polish_changes || [];
+      el.innerHTML = changes.map(c => '<div style="margin-bottom:6px"><span style="color:#ff9800;font-weight:600">['+escapeHtml(c.type||'')+']</span> <del style="color:#e74c3c">'+escapeHtml(c.before||'')+'</del> → <ins style="color:#27ae60">'+escapeHtml(c.after||'')+'</ins> <span style="color:var(--text-muted);font-size:11px">('+escapeHtml(c.reason||'')+')</span></div>').join('');
+    } else {
+      el.textContent = CAFE.results[idx][type] || '(없음)';
+    }
+    btn.textContent = '▲ '+label+(type==='polish'?' '+((CAFE.results[idx].polish_changes||[]).length)+'건':'')+' 접기';
   } else {
     el.style.display = 'none';
-    btn.textContent = '▼ '+label+' 펼치기';
+    btn.textContent = '▼ '+label+(type==='polish'?' '+((CAFE.results[idx].polish_changes||[]).length)+'건':'')+' 펼치기';
   }
 }
 
 function cafeCopy(idx, type) {
   const d = CAFE.results[idx];
-  const text = type==='title'?d.title:type==='body'?d.body:d.comments;
+  const text = type==='title'?d.title:type==='body'?d.body:type==='replies'?(d.replies||''):d.comments;
   navigator.clipboard.writeText(text).then(() => showToast('✅ 복사되었습니다', 'success'));
 }
 
@@ -1604,8 +1616,10 @@ async function cafeSaveNotionOne(idx) {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         title: d.title, body: d.body, comments: d.comments,
+        replies: d.replies || '', polish_changes: d.polish_changes || [],
         body_summary: d.body.substring(0,300),
         photo_count: d.photo_count, page_id: d.page_id,
+        review_status: d.review_status || '',
       })
     });
     const res = await r.json();
@@ -6615,7 +6629,7 @@ async function ptLoadChannels() {
     const d = await r.json();
     const el = document.getElementById('ptChannelBtns');
     const labels = {
-      '블로그':'📝 블로그','카페SEO_제목':'☕ 카페 제목','카페SEO_본문':'☕ 카페 본문','카페SEO_댓글':'☕ 카페 댓글',
+      '블로그':'📝 블로그','카페SEO_제목':'☕ 카페 제목','카페SEO_본문':'☕ 카페 본문','카페SEO_댓글':'☕ 카페 댓글','카페SEO_답글':'☕ 카페 답글','카페SEO_Polish':'☕ 카페 Polish',
       '지식인_질문제목':'❓ 지식인 질문제목','지식인_질문본문':'❓ 지식인 질문본문','지식인_답변':'❓ 지식인 답변',
       '틱톡':'🎵 틱톡','커뮤니티':'💬 커뮤니티',
       '쓰레드_일상글':'🧵 일상글','쓰레드_물길글_셔플':'🧵 셔플식','쓰레드_물길글_연민':'🧵 연민식','쓰레드_물길글_후기':'🧵 후기식'

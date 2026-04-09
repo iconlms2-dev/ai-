@@ -96,28 +96,77 @@ def validate_blog(title: str, body: str, keyword: str,
 
 # ── 카페SEO ──
 
-def validate_cafe_seo(body: str, keyword: str, comments_text: str) -> list[str]:
+CAFE_FORBIDDEN_WORDS = [
+    "병원", "진료", "가격", "하더라구요",
+]
+
+
+def validate_cafe_seo(body: str, keyword: str, comments_text: str,
+                      replies_text: str = '', sub_keywords: str = '',
+                      target_char: int = 0, target_repeat: int = 0,
+                      target_photo: int = 0) -> list[str]:
     errors = []
     c = len(body)
-    if c < 800:
-        errors.append(f"글자수 부족: {c}자 (최소 800)")
-    if c > 1500:
-        errors.append(f"글자수 초과: {c}자 (최대 1500)")
+    # 글자수: 동적 기준이 있으면 ±100, 없으면 기본 범위
+    if target_char > 0:
+        if c < target_char - 100:
+            errors.append(f"글자수 부족: {c}자 (기준 {target_char}±100)")
+        if c > target_char + 100:
+            errors.append(f"글자수 초과: {c}자 (기준 {target_char}±100)")
+    else:
+        if c < 800:
+            errors.append(f"글자수 부족: {c}자 (최소 800)")
+        if c > 1500:
+            errors.append(f"글자수 초과: {c}자 (최대 1500)")
 
+    # 키워드 반복: 동적 기준이 있으면 target_repeat+1, 없으면 기본 3~6
     kw_count = body.lower().count(keyword.lower())
-    if kw_count < 3:
-        errors.append(f"키워드 부족: {kw_count}회 (최소 3회)")
-    if kw_count > 6:
-        errors.append(f"키워드 과다: {kw_count}회 (최대 6회)")
+    if target_repeat > 0:
+        expected = target_repeat + 1
+        if kw_count < expected:
+            errors.append(f"키워드 부족: {kw_count}회 (기준 {expected}회)")
+    else:
+        if kw_count < 3:
+            errors.append(f"키워드 부족: {kw_count}회 (최소 3회)")
+        if kw_count > 6:
+            errors.append(f"키워드 과다: {kw_count}회 (최대 6회)")
 
+    # 서브 키워드 포함 여부
+    if sub_keywords:
+        for sk in [s.strip() for s in sub_keywords.split(',') if s.strip()]:
+            if sk.lower() not in body.lower():
+                errors.append(f"서브 키워드 미포함: '{sk}'")
+
+    # 댓글 수량 검증
     comment_lines = [l.strip() for l in comments_text.strip().split("\n") if l.strip()]
-    if len(comment_lines) < 3:
-        errors.append(f"댓글 부족: {len(comment_lines)}개 (최소 3개)")
+    if len(comment_lines) < 10:
+        errors.append(f"댓글 부족: {len(comment_lines)}개 (최소 10개)")
 
+    # 답글 수량 검증
+    if replies_text:
+        reply_markers = re.findall(r'(?:^|\n)\s*→', replies_text)
+        if len(reply_markers) < 10:
+            errors.append(f"답글 부족: {len(reply_markers)}개 (최소 10개)")
+
+    # 사진 태그 수 검증
+    photo_tags = re.findall(r'\[어울릴 사진[^\]]*\]|\[이미지\d*\]', body)
+    if target_photo > 0:
+        expected_photo = target_photo + 1
+        if len(photo_tags) < expected_photo:
+            errors.append(f"사진 태그 부족: {len(photo_tags)}개 (기준 {expected_photo}개)")
+    elif len(photo_tags) < 3:
+        errors.append(f"사진 태그 부족: {len(photo_tags)}개 (최소 3개)")
+
+    # 광고성 표현 검사
     for w in AD_WORDS_GENERIC:
         if w in body:
             errors.append(f"광고성 표현 발견: '{w}'")
             break
+
+    # 금칙어 잔존 검사 (polish 후에도 남아있는지)
+    for fw in CAFE_FORBIDDEN_WORDS:
+        if fw in body and fw.lower() != keyword.lower():
+            errors.append(f"금칙어 잔존: '{fw}'")
     return errors
 
 
