@@ -302,6 +302,7 @@ def _run_rule_validation(channel: str, content: dict, keyword: str) -> list[str]
                 body=content.get("body", ""),
                 keyword=keyword,
                 comments_text=content.get("comments", ""),
+                replies_text=content.get("replies", ""),
             )
         elif channel == "cafe-viral":
             return validate_cafe_viral(
