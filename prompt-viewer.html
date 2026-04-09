@@ -330,12 +330,12 @@ function renderPrompt(channel) {
       </div>
 
       <button class="copy-claude-btn" onclick="copyCombinedForClaude()">
-        📋 claude.ai에 붙여넣을 전체 프롬프트 복사 (더미 데이터)
+        📋 시크릿 채팅용 프롬프트 복사 (더미 데이터)
       </button>
 
       <div style="margin-top:24px;padding:20px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--accent)">🚀 실제 데이터로 프롬프트 생성 (claude.ai용)</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">크롤링+분석+제목까지 서버에서 수행. 본문 프롬프트를 claude.ai에 복사해서 사용하세요.</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--accent)">🚀 실제 데이터로 프롬프트 생성 (시크릿 채팅용)</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">크롤링+분석+제목까지 서버에서 수행. 시크릿 채팅에 붙여넣어 테스트하세요.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
           <input id="bpKeyword" placeholder="키워드" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
           <input id="bpProdName" placeholder="제품명" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
@@ -375,13 +375,28 @@ function copyCurrentTab() {
   });
 }
 
+function wrapForSecretChat(sysPrompt, usrPrompt) {
+  return `아래 [역할]과 [규칙]을 반드시 지켜서 [작업]을 수행해.
+규칙을 하나라도 어기면 처음부터 다시 써.
+
+[역할]
+${sysPrompt || ''}
+
+[작업]
+${usrPrompt || ''}
+
+[최종 확인]
+- 위 [역할]의 모든 규칙을 빠짐없이 지켰는지 확인한 뒤 출력해.
+- 본문만 출력하고, 부연 설명이나 인사말은 붙이지 마.`;
+}
+
 function copyCombinedForClaude() {
   const data = promptCache[currentChannel];
-  const combined = `다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n${data.system_prompt || ''}\n\n---\n\n${data.user_prompt || ''}`;
-  navigator.clipboard.writeText(combined).then(() => {
+  const wrapped = wrapForSecretChat(data.system_prompt, data.user_prompt);
+  navigator.clipboard.writeText(wrapped).then(() => {
     const btn = document.querySelector('.copy-claude-btn');
-    btn.textContent = '✅ 클립보드에 복사됨 → claude.ai에 붙여넣기';
-    setTimeout(() => btn.textContent = '📋 claude.ai에 붙여넣을 전체 프롬프트 복사', 2000);
+    btn.textContent = '✅ 클립보드에 복사됨 → 시크릿 채팅에 붙여넣기';
+    setTimeout(() => btn.textContent = '📋 시크릿 채팅용 프롬프트 복사', 2000);
   });
 }
 
@@ -450,17 +465,17 @@ async function buildRealPrompt() {
         if (r.q_title) prompts.push({label: '생성된 질문 제목', text: r.q_title, copyable: false});
         if (r.q_body) prompts.push({label: '생성된 질문 본문', text: r.q_body, copyable: false});
         if (r.analysis) prompts.push({label: '상위글 분석', text: '사진 '+r.analysis.photo_count+'장, 키워드 '+r.analysis.keyword_repeat+'회, 글자수 '+r.analysis.char_count+'자', copyable: false});
-        if (r.body_prompt) prompts.push({label: '본문 프롬프트 (claude.ai용)', text: r.body_prompt.combined, copyable: true});
-        if (r.comments_prompt) prompts.push({label: '댓글 프롬프트 (claude.ai용)', text: r.comments_prompt.combined, copyable: true});
-        if (r.answers_prompt) prompts.push({label: '답변 프롬프트 (claude.ai용)', text: r.answers_prompt.combined, copyable: true});
-        if (r.post_prompt) prompts.push({label: '침투글 프롬프트 (claude.ai용)', text: r.post_prompt.combined, copyable: true});
+        if (r.body_prompt) prompts.push({label: '본문 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.body_prompt.system_prompt, r.body_prompt.user_prompt), copyable: true});
+        if (r.comments_prompt) prompts.push({label: '댓글 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.comments_prompt.system_prompt, r.comments_prompt.user_prompt), copyable: true});
+        if (r.answers_prompt) prompts.push({label: '답변 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.answers_prompt.system_prompt, r.answers_prompt.user_prompt), copyable: true});
+        if (r.post_prompt) prompts.push({label: '침투글 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.post_prompt.system_prompt, r.post_prompt.user_prompt), copyable: true});
       });
     } else if (data.steps) {
-      data.steps.forEach(s => prompts.push({label: s.name + ' (claude.ai용)', text: s.combined, copyable: true}));
+      data.steps.forEach(s => prompts.push({label: s.name + ' (시크릿 채팅용)', text: wrapForSecretChat(s.system_prompt, s.user_prompt || s.combined), copyable: true}));
     } else if (data.body_prompt) {
       if (data.ad_title) prompts.push({label: '생성된 광고 제목', text: data.ad_title, copyable: false});
       if (data.ad_desc) prompts.push({label: '생성된 광고 설명', text: data.ad_desc, copyable: false});
-      prompts.push({label: '본문 프롬프트 (claude.ai용)', text: data.body_prompt.combined, copyable: true});
+      prompts.push({label: '본문 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(data.body_prompt.system_prompt, data.body_prompt.user_prompt), copyable: true});
     }
 
     let html = '';
@@ -489,7 +504,7 @@ function bpCopy(idx) {
   const ta = document.getElementById('bpText' + idx);
   if (!ta) return;
   navigator.clipboard.writeText(ta.value).then(() => {
-    alert('복사 완료! claude.ai에 붙여넣기 하세요.');
+    alert('복사 완료! claude.ai 시크릿 채팅에 붙여넣기 하세요.');
   }).catch(() => { ta.select(); document.execCommand('copy'); });
 }
 
