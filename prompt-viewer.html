@@ -321,7 +321,7 @@ function renderPrompt(channel) {
       <div class="prompt-tabs">
         <div class="prompt-tab ${currentTab === 'system' ? 'active' : ''}" onclick="switchTab('system')">🔧 시스템 프롬프트</div>
         <div class="prompt-tab ${currentTab === 'user' ? 'active' : ''}" onclick="switchTab('user')">👤 유저 프롬프트</div>
-        <div class="prompt-tab ${currentTab === 'combined' ? 'active' : ''}" onclick="switchTab('combined')">📋 claude.ai용 통합</div>
+        <div class="prompt-tab ${currentTab === 'combined' ? 'active' : ''}" onclick="switchTab('combined')">📋 시크릿 채팅용 통합</div>
       </div>
 
       <div style="position:relative;">
@@ -392,11 +392,14 @@ ${usrPrompt || ''}
 
 function copyCombinedForClaude() {
   const data = promptCache[currentChannel];
+  if (!data) return;
   const wrapped = wrapForSecretChat(data.system_prompt, data.user_prompt);
   navigator.clipboard.writeText(wrapped).then(() => {
     const btn = document.querySelector('.copy-claude-btn');
     btn.textContent = '✅ 클립보드에 복사됨 → 시크릿 채팅에 붙여넣기';
     setTimeout(() => btn.textContent = '📋 시크릿 채팅용 프롬프트 복사', 2000);
+  }).catch(() => {
+    alert('클립보드 접근 실패. 수동으로 복사하세요.');
   });
 }
 
@@ -471,7 +474,7 @@ async function buildRealPrompt() {
         if (r.post_prompt) prompts.push({label: '침투글 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.post_prompt.system_prompt, r.post_prompt.user_prompt), copyable: true});
       });
     } else if (data.steps) {
-      data.steps.forEach(s => prompts.push({label: s.name + ' (시크릿 채팅용)', text: wrapForSecretChat(s.system_prompt, s.user_prompt || s.combined), copyable: true}));
+      data.steps.forEach(s => prompts.push({label: s.name + ' (시크릿 채팅용)', text: wrapForSecretChat(s.system_prompt, s.user_prompt != null ? s.user_prompt : s.combined), copyable: true}));
     } else if (data.body_prompt) {
       if (data.ad_title) prompts.push({label: '생성된 광고 제목', text: data.ad_title, copyable: false});
       if (data.ad_desc) prompts.push({label: '생성된 광고 설명', text: data.ad_desc, copyable: false});
