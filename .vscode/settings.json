@@ -1,0 +1,46 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.DS_Store": true,
+    ".pytest_cache": true,
+
+    "_legacy": true,
+    "server_backup.py": true,
+
+    "parse_baidu.py": true,
+    "parse_baidu_img.py": true,
+    "parse_xhs.py": true,
+    "parse_xhs_2.py": true,
+    "parse_xhs_3.py": true,
+    "parse_xhs_4.py": true,
+    "test_xhs.py": true,
+    "baidu_source.html": true,
+    "xhs_source.html": true,
+    "xhs_source2.html": true,
+    "xhs_source3.html": true,
+
+    "review_part1.txt": true,
+    "review_part2.txt": true,
+    "gemini_review.txt": true,
+    "threads_code_for_review.py": true,
+    "threads_frontend_for_review.js": true,
+
+    "사진라이브러리": true,
+    "관련 파일": true,
+    "마케팅자동화_사용안내서_v3.docx": true,
+    "마케팅자동화_사용안내서_부록.docx": true,
+
+    "ad_outputs": true,
+    "ad_refs": true,
+    "outputs": true,
+    "shorts_output": true,
+    "temp_photos": true,
+    "photos": true,
+
+    "cafe24_token.json": true,
+    "naver_accounts.json": true,
+    "job_state.json": true,
+    "weekly_schedule.json": true,
+    "keyword_progress.json": true
+  }
+}
