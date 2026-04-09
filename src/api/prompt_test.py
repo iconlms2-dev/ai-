@@ -182,6 +182,12 @@ def _get_full_prompt(channel):
         elif channel == '카페바이럴_침투글':
             from src.api.viral import _build_viral_stage3_prompt
             return _build_viral_stage3_prompt('타겟층', '고민키워드', '테스트키워드', '테스트제품', '핵심특징', '성분', '건강기능식품')
+        elif channel == '카페SEO_답글':
+            from src.api.cafe import _build_cafe_replies_prompt
+            return _build_cafe_replies_prompt('테스트', '본문 텍스트', '댓글 텍스트', '브랜드키워드')
+        elif channel == '카페SEO_Polish':
+            from src.api.cafe import _build_cafe_polish_prompt
+            return _build_cafe_polish_prompt('테스트', '제목', '본문', '댓글', '브랜드키워드', '병원,가격')
         elif channel == '파워컨텐츠_광고소재':
             from src.api.powercontent import _build_pc_ad_prompt
             return _build_pc_ad_prompt('테스트', '소구점', '구매원씽', dummy_product, '부정편향', '')
@@ -203,7 +209,7 @@ async def prompt_test_channels():
     """테스트 가능한 채널 목록"""
     channels = [
         '블로그_제목', '블로그_본문',
-        '카페SEO_제목', '카페SEO_본문', '카페SEO_댓글',
+        '카페SEO_제목', '카페SEO_본문', '카페SEO_댓글', '카페SEO_답글', '카페SEO_Polish',
         '지식인_질문제목', '지식인_질문본문', '지식인_답변',
         '유튜브댓글', '틱톡', '커뮤니티',
         '카페바이럴_일상글', '카페바이럴_고민글', '카페바이럴_침투글',
