@@ -445,14 +445,23 @@ async def blog_build_prompt(request: Request):
         ct = analysis.get('char_count', 0)
 
         # 2. 제목 생성 (API — 짧아서 비용 미미)
-        title_sys, title_usr = _build_blog_title_prompt(kw, product)
+        overrides = _prompt_load_overrides()
+        title_sys = overrides.get('블로그_제목', None)
+        if title_sys:
+            title_usr = f"[입력 정보]\n- 상위 노출 키워드: {kw}\n\n[제목 작성 규칙]\n\"{kw}\"는 제목에 반드시 1회 자연스럽게 포함"
+        else:
+            title_sys, title_usr = _build_blog_title_prompt(kw, product)
         title_raw = await loop.run_in_executor(executor, call_claude, title_sys, title_usr)
         title = title_raw.strip().replace('제목:', '').replace('제목 :', '').strip()
         if '\n' in title:
             title = title.split('\n')[0].strip()
 
         # 3. 본문 프롬프트 조립 (API 호출 X)
-        body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
+        body_sys = overrides.get('블로그_본문', None)
+        if body_sys:
+            body_usr = f"[시스템 자동 전달]\n제목: {title}\n\n[사용자 입력]\n상위 노출 키워드: {kw}\n제품명: {product.get('name','')}\n제품 USP (차별 포인트): {product.get('usp','')}\n타겟층: {product.get('target','')}\n주요 성분: {product.get('ingredients','')}\n나만의 키워드: {product.get('brand_keyword','')}\n구매여정 단계: {stage}\n사진 수: {pc}장\n키워드 반복 수: {kr}회\n\n위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."
+        else:
+            body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
         combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{body_sys}\n\n---\n\n{body_usr}"
 
         results.append({

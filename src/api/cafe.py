@@ -584,7 +584,7 @@ async def cafe_build_prompt(request: Request):
         combined_body = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys2}\n\n---\n\n{usr2}"
 
         # 댓글 프롬프트 조립
-        sys3, usr3 = _build_cafe_comments_prompt(kw, '(본문은 위에서 생성한 결과를 넣어주세요)', product.get('brand_keyword', ''), '')
+        sys3, usr3 = _build_cafe_comments_prompt(kw, '(본문은 위에서 생성한 결과를 넣어주세요)', product.get('brand_keyword', ''), product.get('alternatives', ''))
         combined_comments = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
 
         results.append({
