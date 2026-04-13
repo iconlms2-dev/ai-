@@ -1,7 +1,7 @@
 """v2 베이스 파이프라인 — 모든 채널이 상속.
 
 공통 흐름:
-  벤치마킹 → 전략 → 기획 → 집필 → 검수(규칙+AI) → [채널별 후반] → Notion 저장
+  벤치마킹 → 전략 → 기획 → 집필 → 검수(규칙+환각+AI) → [채널별 후반] → Notion 저장
 
 파일시스템 상태 머신으로 중간 재개 지원.
 """
@@ -17,6 +17,7 @@ from .common import (
     ai_review, print_step, print_report,
     MAX_REVISIONS, MAX_STRATEGY_ROLLBACKS,
 )
+from .hallucination_detector import detect_hallucinations
 
 
 class BasePipeline(ABC):
@@ -155,8 +156,9 @@ class BasePipeline(ABC):
         """콘텐츠 생성. 기획서 기반 AI 집필."""
         raise NotImplementedError("하위 클래스에서 구현 필요")
 
-    def do_review(self, content: dict, validator_fn, ai_criteria: dict = None) -> tuple[bool, list[str]]:
-        """2단계 검수: 규칙(코드) + AI.
+    def do_review(self, content: dict, validator_fn, ai_criteria: dict = None,
+                  product: dict = None) -> tuple[bool, list[str]]:
+        """3단계 검수: 규칙(코드) + 환각탐지 + AI.
 
         Returns: (passed, errors)
         """
@@ -165,6 +167,22 @@ class BasePipeline(ABC):
         rule_errors = validator_fn(content) if callable(validator_fn) else []
         if rule_errors:
             return False, rule_errors
+
+        # 1.5차: 환각 탐지 (L1+L2)
+        hal_report = detect_hallucinations(text, self.channel, product)
+        if hal_report.issues:
+            hal_warnings = [
+                f"[환각주의] {iss.reason} (-{iss.deduction}점)"
+                for iss in hal_report.issues
+                if iss.severity in ("critical", "high")
+            ]
+            if hal_warnings:
+                print(f"  환각 의심 {len(hal_report.issues)}건 (점수: {hal_report.score})")
+                for w in hal_warnings[:3]:
+                    print(f"    {w}")
+            # critical/high 환각이 있고 점수 70 미만이면 차단
+            if hal_report.score < 70 and hal_warnings:
+                return False, hal_warnings
 
         # 2차: AI review
         if ai_criteria:

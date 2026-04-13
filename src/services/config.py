@@ -60,6 +60,20 @@ SECTION_MAP = {
 CONTENT_CODES = {'urB_coR','urB_boR','ugB_b1R','ugB_b2R','ugB_b3R','heB_ceR','ink_kid','ugB_bsR'}
 NOISE_WORDS = ['더보기','클릭','전체보기','닫기','FAQ','인플루언서 참여','콘텐츠더보기','바로가기','자세히보기','관련검색어']
 
+# ── 환각 탐지 설정 ──
+HALLUCINATION_CONFIG = {
+    "blog":         {"l3_enabled": True,  "threshold": 70},
+    "cafe-seo":     {"l3_enabled": True,  "threshold": 70},
+    "cafe-viral":   {"l3_enabled": True,  "threshold": 75},
+    "jisikin":      {"l3_enabled": True,  "threshold": 80},
+    "youtube":      {"l3_enabled": False, "threshold": 60},
+    "tiktok":       {"l3_enabled": False, "threshold": 60},
+    "shorts":       {"l3_enabled": False, "threshold": 60},
+    "community":    {"l3_enabled": True,  "threshold": 75},
+    "powercontent": {"l3_enabled": True,  "threshold": 70},
+    "threads":      {"l3_enabled": False, "threshold": 60},
+}
+
 # ── 공유 인스턴스 ──
 executor = ThreadPoolExecutor(max_workers=3)
 selenium_semaphore = asyncio.Semaphore(1)

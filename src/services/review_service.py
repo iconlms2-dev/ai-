@@ -1,7 +1,7 @@
 """검수 + 상태관리 서비스.
 
 대시보드 API와 Slack 양쪽에서 사용.
-규칙검수(코드) → AI검수(Gemini) → 상태전이 → 결과 반환.
+규칙검수(코드) → 환각탐지(L1+L2) → AI검수(Gemini+L3) → 상태전이 → 결과 반환.
 """
 import json
 import logging
@@ -10,9 +10,10 @@ from typing import Callable, Optional
 
 import requests as req
 
-from src.services.config import GEMINI_API_KEY
+from src.services.config import GEMINI_API_KEY, HALLUCINATION_CONFIG
 from src.pipeline_v2.state_machine import ProjectState
 from src.pipeline_v2.seo_analyzer import analyze_seo
+from src.pipeline_v2.hallucination_detector import detect_hallucinations
 from src.pipeline_v2.rule_validators import (
     validate_blog, validate_cafe_seo, validate_cafe_viral,
     validate_jisikin, validate_youtube_comment, validate_tiktok,
@@ -43,20 +44,23 @@ AI_CRITERIA = {
 # ── Gemini AI 검수 ──
 
 def _call_gemini_review(text: str, channel: str, criteria: dict,
-                        seo_context: str = "") -> dict:
+                        seo_context: str = "",
+                        hallucination_context: str = "") -> dict:
     """Gemini 2.0 Flash로 AI 검수. 무료/저가 — Claude 토큰 절약."""
     if not GEMINI_API_KEY:
         logger.warning("GEMINI_API_KEY 미설정 — AI 검수 스킵")
-        return {"pass": True, "score": 80, "feedback": "GEMINI_API_KEY 미설정 — 스킵", "items": []}
+        return {"pass": True, "score": 80, "feedback": "GEMINI_API_KEY 미설정 — 스킵",
+                "items": [], "hallucination_verified": []}
 
     criteria_text = "\n".join(f"- {k}: {v}점 이상" for k, v in criteria.items())
     seo_block = f"\n[SEO 분석 결과 (참고)]\n{seo_context}\n" if seo_context else ""
+    hal_block = f"\n{hallucination_context}\n위 환각 의심 항목이 실제 환각인지 판단하여 hallucination_verified에 포함하세요.\n" if hallucination_context else ""
     prompt = f"""당신은 마케팅 콘텐츠 품질 검수 전문가입니다.
 
 [채널] {channel}
 [검수 기준]
 {criteria_text}
-{seo_block}
+{seo_block}{hal_block}
 [검수 대상 콘텐츠]
 {text[:3000]}
 
@@ -67,11 +71,15 @@ def _call_gemini_review(text: str, channel: str, criteria: dict,
   "feedback": "전체 평가 요약 (1~2문장)",
   "items": [
     {{"name": "항목명", "score": 점수, "comment": "코멘트"}}
+  ],
+  "hallucination_verified": [
+    {{"text": "환각 원문", "is_hallucination": true/false, "reason": "판단 근거"}}
   ]
 }}
 
 pass 기준: 모든 항목이 기준 점수 이상이면 true, 하나라도 미달이면 false.
-score 기준: 전체 항목 평균 (10점 만점 → 100점 만점 환산)."""
+score 기준: 전체 항목 평균 (10점 만점 → 100점 만점 환산).
+hallucination_verified: 환각 의심 항목이 없으면 빈 배열."""
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
@@ -172,6 +180,7 @@ def review_and_save(
 
     # 2. 규칙 검수 + 리비전 루프
     revision_count = 0
+    rule_errors: list[str] = []
     current_content = content
 
     for rev in range(max_revisions + 1):
@@ -240,19 +249,47 @@ def review_and_save(
             events.append({"type": "review_rule_pass", "msg": "규칙검수 통과"})
             break
 
-    # 3. 상태 전이: draft → under_review
+    # 3. 환각 탐지 (L1 패턴 + L2 제품 대조)
+    review_text = _extract_review_text(current_content)
+    events.append({"type": "hallucination_check", "msg": "환각 탐지 중 (L1+L2)..."})
+    hal_report = detect_hallucinations(review_text, channel, product)
+    hal_dict = hal_report.to_dict()
+
+    if hal_report.issues:
+        events.append({
+            "type": "hallucination_found",
+            "msg": f"환각 의심 {len(hal_report.issues)}건 발견 (감점 -{hal_report.total_deduction})",
+            "data": hal_dict,
+        })
+    else:
+        events.append({"type": "hallucination_clear", "msg": "환각 의심 항목 없음"})
+
+    # 4. 상태 전이: draft → under_review
     project.transition("under_review")
 
-    # 4. AI 검수 (Gemini) — SEO 분석 결과를 context로 전달
+    # 5. AI 검수 (Gemini) — SEO + 환각 컨텍스트를 함께 전달 (L3)
     criteria = AI_CRITERIA.get(channel, {"품질": 7})
-    review_text = _extract_review_text(current_content)
     seo_context = ""
     if channel in ("blog", "cafe-seo", "powercontent"):
         title = current_content.get("title", current_content.get("ad_title", ""))
         seo_result = analyze_seo(review_text, keyword, title)
         seo_context = seo_result.summary_text()
-    events.append({"type": "reviewing_ai", "msg": "AI 검수 중 (Gemini)..."})
-    ai_result = _call_gemini_review(review_text, channel, criteria, seo_context)
+    hal_config = HALLUCINATION_CONFIG.get(channel, {"l3_enabled": True, "threshold": 70})
+    hallucination_context = hal_report.summary_text() if hal_config["l3_enabled"] else ""
+    events.append({"type": "reviewing_ai", "msg": "AI 검수 중 (Gemini + 환각 L3 검증)..."})
+    ai_result = _call_gemini_review(
+        review_text, channel, criteria, seo_context, hallucination_context,
+    )
+
+    # L3: Gemini가 확인한 환각 결과 반영
+    verified = ai_result.get("hallucination_verified", [])
+    confirmed_count = sum(1 for v in verified if v.get("is_hallucination"))
+    if confirmed_count:
+        events.append({
+            "type": "hallucination_confirmed",
+            "msg": f"AI 확인 환각 {confirmed_count}건",
+            "data": verified,
+        })
 
     events.append({
         "type": "review_ai_done",
@@ -260,22 +297,37 @@ def review_and_save(
         "data": ai_result,
     })
 
-    # 5. 최종 판정 + 상태 전이
-    if ai_result["pass"]:
+    # 6. 최종 판정 + 상태 전이 (환각 감점 반영)
+    final_score = ai_result["score"]
+    hal_deduction = hal_report.total_deduction
+    adjusted_score = max(0, final_score - hal_deduction)
+
+    hal_threshold = hal_config["threshold"]
+    if ai_result["pass"] and adjusted_score >= hal_threshold:
         project.transition("approved")
         final_status = "approved"
         passed = True
-        events.append({"type": "review_pass", "msg": f"검수 통과 — 점수 {ai_result['score']}", "data": ai_result})
+        events.append({
+            "type": "review_pass",
+            "msg": f"검수 통과 — AI {final_score}점, 환각감점 -{hal_deduction}, 최종 {adjusted_score}점",
+            "data": {**ai_result, "hallucination_report": hal_dict},
+        })
     else:
         project.transition("revision")
         final_status = "revision"
         passed = False
-        events.append({"type": "review_fail", "msg": f"AI 검수 미달 — 점수 {ai_result['score']}", "data": ai_result})
+        events.append({
+            "type": "review_fail",
+            "msg": f"검수 미달 — AI {final_score}점, 환각감점 -{hal_deduction}, 최종 {adjusted_score}점",
+            "data": {**ai_result, "hallucination_report": hal_dict},
+        })
 
-    # 6. 프로젝트 상태 저장
+    # 7. 프로젝트 상태 저장
     project.save_step_file("05_review", "review_result.json", {
-        "rule_errors": rule_errors if 'rule_errors' in dir() else [],
+        "rule_errors": rule_errors,
         "ai_review": ai_result,
+        "hallucination_report": hal_dict,
+        "adjusted_score": adjusted_score,
         "revision_count": revision_count,
         "passed": passed,
     })
@@ -286,6 +338,8 @@ def review_and_save(
         "revision_count": revision_count,
         "rule_errors": [],
         "ai_review": ai_result,
+        "hallucination_report": hal_dict,
+        "adjusted_score": adjusted_score,
         "project_id": project_id,
         "status": final_status,
         "events": events,
