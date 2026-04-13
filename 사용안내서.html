@@ -1275,6 +1275,7 @@
 </table>
 <p>"💾 작업 기록 저장"을 누르면 노션 콘텐츠 DB에 기록되고, 배포 상태가 자동으로 "배포완료"로 변경됩니다.</p>
 <div class="tip-box">작업 기록이 저장되면 성과수집 대상에 자동으로 포함됩니다. 배포URL이 입력되어야 노출 체크가 가능합니다.</div>
+<div class="tip-box"><strong>IndexNow 자동 제출:</strong> 게시글 URL을 입력하고 작업 기록을 저장하면, 자체 도메인 URL인 경우 Bing/Yandex 등 검색엔진에 즉시 알림이 전송됩니다. 네이버 블로그/카페 URL은 플랫폼 자체 인덱싱을 사용하므로 자동 스킵됩니다. 이 기능을 사용하려면 <code>.env</code>에 <code>INDEXNOW_KEY</code>를 설정하세요.</div>
 
 
 <!-- ══════════════════════════════════════════════ -->
@@ -1863,6 +1864,7 @@
   <tr><td>Gemini Flash</td><td>번역, 구매여정 판별</td><td>.env 파일</td><td>무료 (한도: 분당 15회)</td></tr>
   <tr><td>Claude API</td><td>콘텐츠 생성</td><td>환경변수 ANTHROPIC_API_KEY</td><td>만료 시</td></tr>
   <tr><td>샤오홍슈 쿠키</td><td>이미지 수집</td><td>xhs CLI 자동 관리</td><td>7일마다</td></tr>
+  <tr><td>IndexNow</td><td>검색엔진 즉시 인덱싱</td><td>.env 파일 (INDEXNOW_KEY)</td><td>만료 없음 (선택사항)</td></tr>
 </table>
 
 <h3>갱신 방법 요약</h3>
@@ -1871,6 +1873,7 @@
   <li><strong>네이버</strong>: searchad.naver.com → 도구 → API 사용 관리 → 키 확인</li>
   <li><strong>Gemini</strong>: aistudio.google.com → Get API key → 키 복사 → server.py 교체</li>
   <li><strong>샤오홍슈</strong>: Chrome에서 로그인 → 터미널에서 <code>xhs login</code></li>
+  <li><strong>IndexNow</strong>: <a href="https://www.bing.com/indexnow">IndexNow 키 생성</a> → <code>.env</code>에 <code>INDEXNOW_KEY=생성된키</code> 추가 → 서버 재시작 (미설정 시 기능이 자동 비활성화되며 기존 동작에 영향 없음)</li>
 </ul>
 
 <h2>B. 계정 준비 및 관리</h2>
