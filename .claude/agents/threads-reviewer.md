@@ -37,16 +37,42 @@ pipeline이 spawn하며, writer가 생성한 글을 검수합니다.
 - 셀링로직 적용: 선택한 로직(셔플/연민/리뷰)에 맞는지
 - 자연스러움: 실제 사용자 글처럼 보이는지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 글자수 범위 이탈: -15
+- 이모지 초과: -10
+- 광고성 키워드 초과: -15
+- 말투 혼용: -10
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 플랫폼적합성/첫줄어그로/셀링로직/자연스러움: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"플랫폼적합성": 8, "첫줄어그로": 7, "셀링로직": 8, "자연스러움": 8},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"플랫폼적합성": 8, "첫줄어그로": 7, "셀링로직": 8, "자연스러움": 8}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
+
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70): next_action: "rewrite"
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

@@ -41,16 +41,42 @@ pipeline이 spawn하며, writer가 생성한 댓글을 검수합니다.
 - 영상 관련성: 영상 내용과 연결되는지
 - 광고 은닉도: 홍보 의도가 티나지 않는지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 댓글 글자수 범위 이탈: -10
+- 영상 제목 관련 단어 누락: -10
+- URL/링크 패턴 발견: -15
+- 광고성 단어 발견: -15
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 시나리오구조/자연스러움/영상관련성/광고은닉도: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"시나리오구조": 8, "자연스러움": 8, "영상관련성": 7, "광고은닉도": 8},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"시나리오구조": 8, "자연스러움": 8, "영상관련성": 7, "광고은닉도": 8}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
+
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70): next_action: "rewrite"
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

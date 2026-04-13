@@ -38,16 +38,41 @@ pipeline이 spawn하며, writer가 생성한 침투글+댓글을 검수합니다
 - 광고 은닉도: 홍보 의도가 티나지 않는지
 - 댓글 자연스러움: 게시글과 연결되며 다른 사람처럼 보이는지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 게시글 글자수 미달: -15
+- 댓글 수 부족: -10
+- 광고성 표현 발견: -15
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 톤매칭/전략적합성/광고은닉도/댓글자연스러움: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"톤매칭": 8, "전략적합성": 8, "광고은닉도": 7, "댓글자연스러움": 8},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"톤매칭": 8, "전략적합성": 8, "광고은닉도": 7, "댓글자연스러움": 8}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
+
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70): next_action: "rewrite"
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

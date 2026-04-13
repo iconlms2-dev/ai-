@@ -41,19 +41,47 @@ pipeline이 spawn하며, writer가 생성한 결과물을 검수합니다.
 - 키워드 삽입: 억지스럽지 않은지
 - 가독성: 문단 길이, 줄바꿈 적절한지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 글자수 미달: -15
+- 키워드 부족: -10
+- 소제목/문단 부족: -10
+- 사진 태그 누락: -10
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 자연스러움: (7 - 점수) × 5 (7 이상이면 0)
+- 구조: (7 - 점수) × 5
+- 키워드삽입: (7 - 점수) × 5
+- 가독성: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS
+- 70-89 → CONCERNS
+- <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": ["실패 항목 목록"],
-  "score_details": {"자연스러움": 8, "구조": 7, "키워드삽입": 8, "가독성": 8},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"자연스러움": 8, "구조": 7, "키워드삽입": 8, "가독성": 8}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
 
-- PASS: 모든 rule 통과 + AI 점수 하한선 이상 → next_action: "proceed"
-- FAIL: 실패 항목 명시 + next_action: "rewrite"
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision" (사용자가 발행/수정/WAIVED 선택)
+- FAIL (<70): next_action: "rewrite" (failed_items 포함)
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

@@ -38,21 +38,45 @@ pipeline이 spawn하며, writer가 생성한 대본을 검수합니다.
 - 채널적합도: 숏폼 영상에 맞는 구조인지
 - 항목별 하한선 미달 시 FAIL
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 글자수 범위 이탈: -15
+- 첫 문장 훅 없음: -10
+- CTA 없음: -10
+- 이모지/특수기호 발견: -10
+- 메타 표기 발견: -10
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 자연스러움/설득력/채널적합도: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"자연스러움": 8, "설득력": 7, "채널적합도": 8},
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"자연스러움": 8, "설득력": 7, "채널적합도": 8}
+  },
   "rewrite_targets": [],
-  "next_action": "proceed 또는 rewrite 또는 rollback_strategy"
+  "next_action": "proceed / user_decision / rewrite / rollback_strategy"
 }
 ```
 
-- PASS: 모든 항목 하한선 이상 → next_action: "proceed"
-- FAIL (규칙/구조/톤): 해당 부분 수정 → next_action: "rewrite"
-- FAIL (전략 자체 문제): → next_action: "rollback_strategy" (1회 한정)
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70, 규칙/구조/톤): next_action: "rewrite"
+- FAIL (<70, 전략 자체 문제): next_action: "rollback_strategy" (1회 한정)
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

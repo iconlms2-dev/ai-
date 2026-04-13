@@ -38,12 +38,16 @@ model: opus
 ### Step 3: 검수 — reviewer spawn
 - jisikin-reviewer 에이전트를 spawn
 - 입력: writer의 결과물 + keyword
-- 출력: {pass_fail, failed_items, score_details, next_action}
+- 출력: {verdict, quality_score, failed_items, warnings, passed_items, score_breakdown, next_action}
 
-### Step 4: 검수 루프
-- PASS → Step 5로
-- FAIL → writer를 다시 spawn (failed_items 전달)
-- 부분 수정 최대 3회
+### Step 4: 판정 분기
+- **PASS (90+)** → Step 5로 즉시 진행
+- **CONCERNS (70-89)** → 사용자에게 경고 요약 표시, 선택지 제공:
+  - "발행 진행" → Step 5로 (warnings 기록과 함께)
+  - "수정 요청" → writer 재spawn
+  - "예외 승인 (WAIVED)" → 사유 입력 후 Step 5로
+- **FAIL (<70)** → writer를 다시 spawn (failed_items 전달)
+- 부분 수정 최대 3회. 초과 시 → 최고점 버전 + WAIVED 옵션 제시
 
 ### Step 5: Notion 저장
 - POST /api/jisikin/save-notion 호출

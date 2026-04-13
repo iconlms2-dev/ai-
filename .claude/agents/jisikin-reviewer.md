@@ -42,16 +42,44 @@ pipeline이 spawn하며, writer가 생성한 Q&A를 검수합니다.
 - 키워드 삽입: 억지스럽지 않은지
 - 신뢰도: 답변이 전문적이고 도움이 되는지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 답변1 글자수 미달: -15
+- 답변2 글자수 미달: -10
+- 질문/답변 분리 실패: -15
+- 키워드 누락: -10
+- 질문 제목/본문 미달: -10
+- 광고성 표현: -15
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 자연스러움/답변차별화/키워드삽입/신뢰도: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"자연스러움": 8, "답변차별화": 7, "키워드삽입": 8, "신뢰도": 8},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"자연스러움": 8, "답변차별화": 7, "키워드삽입": 8, "신뢰도": 8}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
+
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70): next_action: "rewrite"
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환

@@ -51,9 +51,12 @@ model: opus
 - 기획서 기반 대본 생성 + 규칙 검수 (revision_loop)
 - 부분 수정 최대 3회
 
-### 05_review: AI 검수
-- 자연스러움/설득력/채널적합도 평가
-- PASS → approved 전환
+### 05_review: AI 검수 + 판정 분기
+- 자연스러움/설득력/채널적합도 평가 → 점수 산출
+- **PASS (90+)** → approved 전환, 06_audio로 진행
+- **CONCERNS (70-89)** → 사용자에게 경고 요약 + 선택지 (진행/수정/WAIVED)
+- **FAIL (<70)** → 04_script로 돌아가 재작성 (부분수정 최대 3회)
+- FAIL + 전략 자체 문제 → rollback_strategy (1회 한정)
 
 ### 06_audio: TTS + 자막 + 문장분리
 - ElevenLabs TTS 호출 → audio.mp3

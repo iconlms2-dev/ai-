@@ -18,10 +18,39 @@ src/pipeline_v2/ — 채널별 파이프라인 (state_machine, rule_validators, 
 draft → under_review → revision → under_review → approved → publish_ready → published
 건너뛰기 불가. 역행 불가 (revision→under_review 제외). 승인 없이 발행 불가.
 
-## 품질 게이트
-1차: rule-validator (코드) → 실패 항목만 부분 수정
-2차: script-reviewer (AI) → 항목별 하한선
-부분 수정 최대 3회. 전략 되돌림 최대 1회. 초과 시 HITL.
+## 4단계 품질 게이트
+
+### 판정 체계
+| 판정 | 점수 | 의미 | 액션 |
+|------|------|------|------|
+| PASS | 90-100 | 모든 기준 충족 | 즉시 다음 단계 |
+| CONCERNS | 70-89 | 경미한 이슈, 발행 가능 | 사용자에게 경고 표시 후 선택 |
+| FAIL | 0-69 | 차단 이슈 존재 | 수정 루프 진입 |
+| WAIVED | - | 사용자 승인 예외 | 사유 기록 후 진행 |
+
+### 검수 스테이지
+- Stage 1: rule-validator (코드) → 실패 항목만 부분 수정
+- Stage 2: AI 심층 리뷰 → 차원별 점수
+- Stage 3: 회귀 패턴 검증 → 최근 학습 항목 재발 체크
+- Stage 4: 최종 판정 → 점수 집계 후 4단계 판정
+
+### 콘텐츠 품질 점수 = 100 - 감점
+- 규칙 검증 실패: 항목당 -10 ~ -15
+- AI 리뷰 차원별 감점: 차원당 -5 ~ -20 (10점 만점 중 하한선 미달 시)
+- 회귀 패턴 발견: 항목당 -10
+
+### 코드 품질 점수 = 100 - 감점
+- 에러 처리 누락: -15 (상), -10 (중)
+- 보안 이슈: -25
+- 동시성/리소스 이슈: -15
+- bare except: -10
+- 스타일/컨벤션: -5
+
+### 판정 분기
+- PASS (90+) → 즉시 다음 단계
+- CONCERNS (70-89) → 사용자 선택: 발행 진행 / 수정 요청 / 예외 승인(WAIVED)
+- FAIL (<70) → 수정 루프 진입 (부분 수정 최대 3회, 전략 되돌림 최대 1회, 초과 시 HITL)
+- WAIVED → 사유 기록 후 진행 (부분수정 3회 초과 시 최고점 버전 + WAIVED 옵션 제시)
 
 ## 컨텍스트 전략
 - 해당 채널 매뉴얼만 로드 (다른 채널 안 읽음)
@@ -31,8 +60,8 @@ draft → under_review → revision → under_review → approved → publish_re
 ## 코드 자동 검수 (필수)
 Python 파일 수정 후:
 1. `py_compile` 실행 → 실패 시 즉시 수정
-2. code-reviewer 실행 → LGTM이면 완료
-3. 이슈 발견 시 debugger로 자동 수정 → 1번부터 재실행 (최대 2회)
+2. code-reviewer 실행 → PASS(90+)이면 완료, CONCERNS(70-89)이면 경고 표시
+3. FAIL(<70) 시 debugger로 자동 수정 → 1번부터 재실행 (최대 2회)
 4. 2회 초과 시 사용자에게 보고
 적용 대상: server.py, src/**/*.py
 

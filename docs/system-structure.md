@@ -299,7 +299,7 @@ draft → under_review → revision → under_review → approved → publish_re
 | 에이전트 46개 (플랫 구조) | 에이전트 50개 (계층 구조: 사장→부장/팀장3→채널별팀장10→직원30→시스템6) |
 | 팀장 없음 | master-orchestrator + content/analytics/ops-lead 추가 |
 | 파이프라인 없음 | src/pipeline_v2/ 상태머신 기반 (base_pipeline + state_machine + rule_validators + tool_boundary) |
-| 검수 1단계 (AI만) | 품질 게이트 2단계 (1차 rule-validator 코드 + 2차 script-reviewer AI) |
+| 검수 1단계 (AI만) | 4단계 품질 게이트 (Stage1 rule-validator → Stage2 AI리뷰 → Stage3 회귀패턴 → Stage4 최종판정 PASS/CONCERNS/FAIL/WAIVED) |
 | 상태 관리 없음 | 상태 전이 강제 (draft→under_review→approved→published, 건너뛰기/역행 불가) |
 | 서비스 분리 없음 | src/services/ 공통 서비스 분리 (config, ai_client, notion, naver, selenium, common) |
 | 코드 검수 수동 | PostToolUse 훅으로 py_compile 자동 검증 |

@@ -37,16 +37,42 @@ pipeline이 spawn하며, writer가 생성한 스크립트를 검수합니다.
 - 설득력: 15~30초 안에 메시지 전달되는지
 - 금지표현: 과장/허위 표현 없는지
 
+## 점수 산출
+
+quality_score = 100 - (규칙 실패 감점) - (AI 리뷰 감점)
+
+### 규칙 실패 감점
+- 글자수 범위 이탈: -15
+- 첫 문장 훅 없음: -10
+- 이모지 발견: -10
+- 메타 표기 발견: -10
+
+### AI 리뷰 감점 (10점 만점, 7점 미만 시 감점)
+- 구조/자연스러움/설득력/금지표현: (7 - 점수) × 5
+
+## 판정 기준
+- 90+ → PASS, 70-89 → CONCERNS, <70 → FAIL
+
 ## 결과 반환
 
 ```json
 {
-  "pass_fail": "PASS 또는 FAIL",
-  "failed_items": [],
-  "score_details": {"구조": 8, "자연스러움": 8, "설득력": 7, "금지표현": 9},
-  "next_action": "proceed 또는 rewrite"
+  "verdict": "PASS / CONCERNS / FAIL",
+  "quality_score": 82,
+  "failed_items": ["규칙 실패 항목 [-N점]"],
+  "warnings": ["경미한 이슈 [-N점]"],
+  "passed_items": ["통과 항목 ✓"],
+  "score_breakdown": {
+    "rule_check": 95,
+    "ai_review": {"구조": 8, "자연스러움": 8, "설득력": 7, "금지표현": 9}
+  },
+  "next_action": "proceed / user_decision / rewrite"
 }
 ```
+
+- PASS (90+): next_action: "proceed"
+- CONCERNS (70-89): next_action: "user_decision"
+- FAIL (<70): next_action: "rewrite"
 
 ## 도구 경계
 - 읽기전용 — 평가/점수/피드백만 반환
