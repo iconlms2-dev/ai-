@@ -46,15 +46,16 @@ def create_app() -> FastAPI:
     app.include_router(inbox.router, prefix="/api/inbox")
 
     @app.on_event("startup")
-    async def _start_weekly_scheduler():
+    async def _init_all_schedulers():
+        from src.services.scheduler_service import init_scheduler
+        init_scheduler()
         await schedule.start_weekly_scheduler()
-
-    @app.on_event("startup")
-    async def _start_threads_scheduler():
         await threads.start_threads_scheduler()
-
-    @app.on_event("startup")
-    async def _restore_perf_schedule():
         await performance.restore_performance_schedule()
+
+    @app.on_event("shutdown")
+    async def _shutdown_scheduler():
+        from src.services.scheduler_service import shutdown_scheduler
+        shutdown_scheduler()
 
     return app

@@ -393,7 +393,7 @@ class ShortsPipeline(BasePipeline):
         if not script or not audio_meta:
             raise RuntimeError("대본 또는 오디오 메타 없음")
 
-        from .shorts_capcut import generate_capcut_project, generate_youtube_meta
+        from .shorts_capcut import generate_capcut_project, generate_youtube_meta, render_video_ffmpeg
 
         # 파일 경로 구성
         audio_dir = p.step_dir("06_audio")
@@ -427,6 +427,25 @@ class ShortsPipeline(BasePipeline):
             total_duration=total_duration,
         )
 
+        # ffmpeg 자동 렌더링 (CapCut 없이도 mp4 생성)
+        upload_dir = p.step_dir("09_upload")
+        ffmpeg_video_path = None
+        if image_paths and os.path.exists(audio_path):
+            print("  ffmpeg 자동 렌더링 시도 중...")
+            ffmpeg_video_path = render_video_ffmpeg(
+                scenes=scenes,
+                audio_path=audio_path,
+                subtitle_segments=subtitle_segments,
+                image_paths=image_paths,
+                total_duration=total_duration,
+                output_dir=upload_dir,
+                project_name=project_name,
+            )
+            if ffmpeg_video_path:
+                print(f"  ffmpeg 렌더링 성공: {ffmpeg_video_path}")
+            else:
+                print("  ffmpeg 렌더링 실패 — CapCut에서 수동 렌더링 필요")
+
         # YouTube 메타데이터 생성
         brief = p.load_step_file("03_brief", "brief.md", as_json=False) or ""
         hooks_data = p.load_step_file("06_audio", "hooks.json") or {}
@@ -438,14 +457,18 @@ class ShortsPipeline(BasePipeline):
 
         p.save_step_file("08_edit", "edit_meta.json", {
             "capcut_draft_dir": draft_dir,
+            "ffmpeg_video_path": ffmpeg_video_path or "",
             "youtube_meta": yt_meta,
             "total_duration": total_duration,
             "scene_count": len(scenes),
-            "image_count": len([p for p in image_paths if p]),
+            "image_count": len([ip for ip in image_paths if ip]),
         })
 
-        print(f"  CapCut 프로젝트 생성 완료")
-        print(f"  렌더링 후 09_upload/ 폴더에 .mp4 파일을 넣어주세요")
+        if ffmpeg_video_path:
+            print(f"  영상 자동 렌더링 완료 → 09_upload 단계 자동 진행 가능")
+        else:
+            print(f"  CapCut 프로젝트 생성 완료")
+            print(f"  렌더링 후 09_upload/ 폴더에 .mp4 파일을 넣어주세요")
 
     # ── 09: YouTube 업로드 ──
 

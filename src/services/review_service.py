@@ -12,6 +12,7 @@ import requests as req
 
 from src.services.config import GEMINI_API_KEY
 from src.pipeline_v2.state_machine import ProjectState
+from src.pipeline_v2.seo_analyzer import analyze_seo
 from src.pipeline_v2.rule_validators import (
     validate_blog, validate_cafe_seo, validate_cafe_viral,
     validate_jisikin, validate_youtube_comment, validate_tiktok,
@@ -41,19 +42,21 @@ AI_CRITERIA = {
 
 # ── Gemini AI 검수 ──
 
-def _call_gemini_review(text: str, channel: str, criteria: dict) -> dict:
+def _call_gemini_review(text: str, channel: str, criteria: dict,
+                        seo_context: str = "") -> dict:
     """Gemini 2.0 Flash로 AI 검수. 무료/저가 — Claude 토큰 절약."""
     if not GEMINI_API_KEY:
         logger.warning("GEMINI_API_KEY 미설정 — AI 검수 스킵")
         return {"pass": True, "score": 80, "feedback": "GEMINI_API_KEY 미설정 — 스킵", "items": []}
 
     criteria_text = "\n".join(f"- {k}: {v}점 이상" for k, v in criteria.items())
+    seo_block = f"\n[SEO 분석 결과 (참고)]\n{seo_context}\n" if seo_context else ""
     prompt = f"""당신은 마케팅 콘텐츠 품질 검수 전문가입니다.
 
 [채널] {channel}
 [검수 기준]
 {criteria_text}
-
+{seo_block}
 [검수 대상 콘텐츠]
 {text[:3000]}
 
@@ -240,11 +243,16 @@ def review_and_save(
     # 3. 상태 전이: draft → under_review
     project.transition("under_review")
 
-    # 4. AI 검수 (Gemini)
+    # 4. AI 검수 (Gemini) — SEO 분석 결과를 context로 전달
     criteria = AI_CRITERIA.get(channel, {"품질": 7})
     review_text = _extract_review_text(current_content)
+    seo_context = ""
+    if channel in ("blog", "cafe-seo", "powercontent"):
+        title = current_content.get("title", current_content.get("ad_title", ""))
+        seo_result = analyze_seo(review_text, keyword, title)
+        seo_context = seo_result.summary_text()
     events.append({"type": "reviewing_ai", "msg": "AI 검수 중 (Gemini)..."})
-    ai_result = _call_gemini_review(review_text, channel, criteria)
+    ai_result = _call_gemini_review(review_text, channel, criteria, seo_context)
 
     events.append({
         "type": "review_ai_done",

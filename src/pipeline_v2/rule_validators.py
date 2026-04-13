@@ -1,5 +1,6 @@
 """채널별 규칙 검수기 (코드 강제). 실패 항목만 부분 수정 대상."""
 import re
+from src.pipeline_v2.seo_analyzer import analyze_seo
 
 
 # ── 공통 ──
@@ -91,6 +92,10 @@ def validate_blog(title: str, body: str, keyword: str,
     has_photo = '[사진]' in body or '(사진)' in body or bool(re.search(r'\[이미지\d*\]', body))
     if not has_photo:
         errors.append("[사진] 또는 [이미지] 태그 없음")
+
+    # SEO 분석 (warnings → errors에 추가)
+    seo = analyze_seo(body, keyword, title)
+    errors.extend(f"[SEO] {w}" for w in seo.warnings)
     return errors
 
 
@@ -167,6 +172,10 @@ def validate_cafe_seo(body: str, keyword: str, comments_text: str,
     for fw in CAFE_FORBIDDEN_WORDS:
         if fw in body and fw.lower() != keyword.lower():
             errors.append(f"금칙어 잔존: '{fw}'")
+
+    # SEO 분석 (카페는 제목 없이 본문만 분석)
+    seo = analyze_seo(body, keyword)
+    errors.extend(f"[SEO] {w}" for w in seo.warnings)
     return errors
 
 
@@ -356,6 +365,10 @@ def validate_powercontent(ad_title: str, ad_desc: str, body: str,
         errors.append("광고 제목 없음")
     if not ad_desc or len(ad_desc.strip()) < 2:
         errors.append("광고 설명 없음")
+
+    # SEO 분석
+    seo = analyze_seo(body, keyword, ad_title)
+    errors.extend(f"[SEO] {w}" for w in seo.warnings)
     return errors
 
 

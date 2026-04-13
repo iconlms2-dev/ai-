@@ -125,6 +125,24 @@
       "output_tokens": 29,
       "cost_usd": 0.001812,
       "channel": "unknown"
+    },
+    {
+      "timestamp": "2026-04-09T22:07:11.391783",
+      "date": "2026-04-09",
+      "model": "claude-sonnet-4-20250514",
+      "input_tokens": 861,
+      "output_tokens": 260,
+      "cost_usd": 0.006483,
+      "channel": "unknown"
+    },
+    {
+      "timestamp": "2026-04-09T22:07:28.662767",
+      "date": "2026-04-09",
+      "model": "claude-sonnet-4-20250514",
+      "input_tokens": 865,
+      "output_tokens": 856,
+      "cost_usd": 0.015435,
+      "channel": "unknown"
     }
   ]
 }

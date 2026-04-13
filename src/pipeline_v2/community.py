@@ -1,11 +1,14 @@
-"""커뮤니티 침투 v2 파이프라인 — 전략→침투글+댓글 생성→검수→저장."""
+"""커뮤니티 침투 v2 파이프라인 — 벤치마킹→전략→침투글+댓글 생성→검수→저장."""
 import argparse
+import logging
 from datetime import datetime
 
 from .base_pipeline import BasePipeline
 from .state_machine import ProjectState
 from .common import call_api, get_event, print_report
 from .rule_validators import validate_community
+
+logger = logging.getLogger(__name__)
 
 
 class CommunityPipeline(BasePipeline):
@@ -47,7 +50,22 @@ class CommunityPipeline(BasePipeline):
             })
 
         elif step == "01_benchmark":
-            data = self.do_benchmark(args)
+            community = p.get("community")
+            keywords = p.get("keywords", [])
+            keyword = keywords[0] if keywords else None
+            try:
+                from src.services.benchmark import crawl_community_references
+                refs = crawl_community_references(community, max_posts=5, keyword=keyword)
+                if refs:
+                    print(f"  {community} 인기글 {len(refs)}개 수집 완료")
+                    data = {"references": refs, "community": community}
+                else:
+                    print(f"  {community} 인기글 수집 실패 — 하드코딩 톤 사용")
+                    data = {"skipped": True, "reason": "크롤링 결과 없음"}
+            except Exception as e:
+                logger.warning("커뮤니티 벤치마킹 오류: %s", e)
+                print(f"  벤치마킹 오류 — fallback: {e}")
+                data = {"skipped": True, "reason": str(e)}
             p.save_step_file("01_benchmark", "references.json", data)
 
         elif step == "02_strategy":

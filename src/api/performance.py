@@ -23,7 +23,6 @@ router = APIRouter()
 
 # ── 모듈 상태 ─────────────────────────────────────────────────────
 _perf_schedule = {"enabled": False, "interval_hours": 24}
-_perf_task = None  # asyncio.Task
 
 
 # ── helpers ────────────────────────────────────────────────────────
@@ -411,19 +410,15 @@ async def _perf_auto_collect():
         print(f"[perf-auto] error: {e}")
 
 
-async def _perf_scheduler_loop():
-    """자동 수집 스케줄러 루프"""
-    global _perf_schedule
-    while _perf_schedule.get("enabled", False):
-        await _perf_auto_collect()
-        hours = _perf_schedule.get("interval_hours", 24)
-        await asyncio.sleep(hours * 3600)
+_PERF_JOB_ID = 'perf_auto_collect'
 
 
 @router.post("/schedule")
 async def performance_schedule_set(request: Request):
     """자동 수집 스케줄 설정"""
-    global _perf_schedule, _perf_task
+    global _perf_schedule
+    from src.services.scheduler_service import scheduler
+
     body = await request.json()
     enabled = body.get('enabled', False)
     interval = body.get('interval_hours', 24)
@@ -431,33 +426,46 @@ async def performance_schedule_set(request: Request):
     # 설정 저장
     with open(PERF_SCHEDULE_FILE, 'w') as f:
         json.dump(_perf_schedule, f)
-    # 태스크 관리
-    if _perf_task and not _perf_task.done():
-        _perf_task.cancel()
-        _perf_task = None
+    # APScheduler job 관리
+    existing = scheduler.get_job(_PERF_JOB_ID)
+    if existing:
+        existing.remove()
     if enabled:
-        _perf_task = asyncio.create_task(_perf_scheduler_loop())
+        scheduler.add_job(
+            _perf_auto_collect, 'interval',
+            id=_PERF_JOB_ID, hours=interval,
+            replace_existing=True, misfire_grace_time=600,
+        )
     return {'success': True, 'schedule': _perf_schedule}
 
 
 @router.get("/schedule")
 async def performance_schedule_get():
     """현재 스케줄 상태 조회"""
-    running = _perf_task is not None and not _perf_task.done() if _perf_task else False
+    from src.services.scheduler_service import scheduler
+    job = scheduler.get_job(_PERF_JOB_ID)
+    running = job is not None
     return {'schedule': _perf_schedule, 'running': running}
 
 
 # ── startup 함수 (앱에서 호출) ─────────────────────────────────────
 
 async def restore_performance_schedule():
-    """서버 시작 시 스케줄 복원"""
-    global _perf_schedule, _perf_task
+    """서버 시작 시 스케줄 복원 — APScheduler interval job 등록."""
+    global _perf_schedule
+    from src.services.scheduler_service import scheduler
+
     if os.path.exists(PERF_SCHEDULE_FILE):
         try:
             with open(PERF_SCHEDULE_FILE, 'r') as f:
                 _perf_schedule = json.load(f)
             if _perf_schedule.get("enabled", False):
-                _perf_task = asyncio.create_task(_perf_scheduler_loop())
-                print("[perf] auto-collect schedule restored")
+                interval = _perf_schedule.get("interval_hours", 24)
+                scheduler.add_job(
+                    _perf_auto_collect, 'interval',
+                    id=_PERF_JOB_ID, hours=interval,
+                    replace_existing=True, misfire_grace_time=600,
+                )
+                print("[perf] auto-collect schedule restored (APScheduler)")
         except Exception:
             pass

@@ -33,7 +33,6 @@ router = APIRouter()
 # ═══════════════════════════ 내부 상태 / 잠금 ═══════════════════════════
 
 _threads_lock = threading.Lock()
-_threads_scheduler_running = False
 
 
 # ═══════════════════════════ 헬퍼 함수 ═══════════════════════════
@@ -932,111 +931,114 @@ def _threads_refresh_token(acc):
         return False
 
 
-async def _threads_scheduler_loop():
-    """백그라운드 스케줄러: 1분마다 큐 확인 -> 조건 맞으면 자동 게시 + 토큰 갱신"""
-    global _threads_scheduler_running
-    _threads_scheduler_running = True
-    _token_check_counter = 0
-    while _threads_scheduler_running:
-        try:
-            await asyncio.sleep(60)
-            now = datetime.now()
-            hour = now.hour
-            queue = _threads_load_queue()
-            accounts_data = _threads_load_accounts()
+async def _threads_scheduler_tick():
+    """APScheduler interval job 콜백 — 큐 확인 → 조건 맞으면 자동 게시."""
+    try:
+        now = datetime.now()
+        hour = now.hour
+        queue = _threads_load_queue()
+        accounts_data = _threads_load_accounts()
+        changed = False
 
-            # 토큰 갱신 체크 (60분마다 1회)
-            _token_check_counter += 1
-            if _token_check_counter >= 60:
-                _token_check_counter = 0
-                loop = asyncio.get_running_loop()
-                token_changed = False
-                for acc in accounts_data.get('accounts', []):
-                    if acc.get('token', {}).get('access_token'):
-                        refreshed = await loop.run_in_executor(executor, _threads_refresh_token, acc)
-                        if refreshed:
-                            token_changed = True
-                if token_changed:
-                    _threads_save_accounts(accounts_data)
-            changed = False
+        for item in queue.get('queue', []):
+            if item['status'] != 'pending':
+                continue
+            acc_id = item['account_id']
+            acc = next((a for a in accounts_data['accounts'] if a['id'] == acc_id), None)
+            if not acc or not acc.get('token', {}).get('access_token'):
+                continue
+            schedule = acc.get('schedule', {})
+            active_start, active_end = schedule.get('active_hours', [9, 22])
+            daily_max = schedule.get('daily_posts', 3)
+            min_interval = schedule.get('min_interval_hours', 3)
 
-            for item in queue.get('queue', []):
-                if item['status'] != 'pending':
-                    continue
-                acc_id = item['account_id']
-                acc = next((a for a in accounts_data['accounts'] if a['id'] == acc_id), None)
-                if not acc or not acc.get('token', {}).get('access_token'):
-                    continue
-                schedule = acc.get('schedule', {})
-                active_start, active_end = schedule.get('active_hours', [9, 22])
-                daily_max = schedule.get('daily_posts', 3)
-                min_interval = schedule.get('min_interval_hours', 3)
+            # 활동 시간대 체크
+            if hour < active_start or hour >= active_end:
+                continue
+            # 일일 한도 체크
+            today = now.strftime('%Y-%m-%d')
+            if acc.get('daily_count_date') != today:
+                acc['daily_count'] = 0
+                acc['daily_count_date'] = today
+            if acc.get('daily_count', 0) >= daily_max:
+                continue
+            # 최소 간격 체크 (마지막 게시 시간)
+            last_pub = acc.get('last_publish_time', '')
+            if last_pub:
+                try:
+                    last_dt = datetime.fromisoformat(last_pub)
+                    elapsed = (now - last_dt).total_seconds() / 3600
+                    jitter = random.uniform(0, 0.5)
+                    if elapsed < min_interval + jitter:
+                        continue
+                except Exception:
+                    pass
 
-                # 활동 시간대 체크
-                if hour < active_start or hour >= active_end:
-                    continue
-                # 일일 한도 체크
-                today = now.strftime('%Y-%m-%d')
-                if acc.get('daily_count_date') != today:
-                    acc['daily_count'] = 0
-                    acc['daily_count_date'] = today
-                if acc.get('daily_count', 0) >= daily_max:
-                    continue
-                # 최소 간격 체크 (마지막 게시 시간)
-                last_pub = acc.get('last_publish_time', '')
-                if last_pub:
-                    try:
-                        last_dt = datetime.fromisoformat(last_pub)
-                        elapsed = (now - last_dt).total_seconds() / 3600
-                        # 랜덤 지터 추가 (봇 탐지 방지)
-                        jitter = random.uniform(0, 0.5)
-                        if elapsed < min_interval + jitter:
-                            continue
-                    except Exception:
-                        pass
+            # 게시 실행
+            token = acc['token']['access_token']
+            user_id = acc['token'].get('user_id', 'me')
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(executor, _threads_publish_post, token, user_id, item['text'])
+            if result.get('ok'):
+                item['status'] = 'published'
+                item['published_at'] = now.isoformat()
+                item['post_id'] = result.get('data', {}).get('id', '')
+                acc['daily_count'] = acc.get('daily_count', 0) + 1
+                acc['last_publish_time'] = now.isoformat()
+                changed = True
+                print(f"[threads_scheduler] 게시 완료: {acc.get('username','')} - {item['text'][:30]}...")
+            else:
+                item['status'] = 'failed'
+                item['error'] = result.get('error', '')[:200]
+                changed = True
 
-                # 게시 실행
-                token = acc['token']['access_token']
-                user_id = acc['token'].get('user_id', 'me')
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(executor, _threads_publish_post, token, user_id, item['text'])
-                if result.get('ok'):
-                    item['status'] = 'published'
-                    item['published_at'] = now.isoformat()
-                    item['post_id'] = result.get('data', {}).get('id', '')
-                    acc['daily_count'] = acc.get('daily_count', 0) + 1
-                    acc['last_publish_time'] = now.isoformat()
-                    changed = True
-                    print(f"[threads_scheduler] 게시 완료: {acc.get('username','')} - {item['text'][:30]}...")
-                else:
-                    item['status'] = 'failed'
-                    item['error'] = result.get('error', '')[:200]
-                    changed = True
+        if changed:
+            _threads_save_queue(queue)
+            fresh_data = _threads_load_accounts()
+            for acc in accounts_data.get('accounts', []):
+                for fresh_acc in fresh_data.get('accounts', []):
+                    if fresh_acc['id'] == acc['id']:
+                        fresh_acc['daily_count'] = acc.get('daily_count', 0)
+                        fresh_acc['daily_count_date'] = acc.get('daily_count_date', '')
+                        fresh_acc['last_publish_time'] = acc.get('last_publish_time', '')
+                        if acc.get('token', {}).get('access_token'):
+                            fresh_acc['token'] = acc['token']
+                        break
+            _threads_save_accounts(fresh_data)
+    except Exception as e:
+        print(f"[threads_scheduler] tick 에러: {e}")
 
-            if changed:
-                _threads_save_queue(queue)
-                # Race Condition 방지: 최신 파일 읽고 변경된 필드만 병합
-                fresh_data = _threads_load_accounts()
-                for acc in accounts_data.get('accounts', []):
-                    for fresh_acc in fresh_data.get('accounts', []):
-                        if fresh_acc['id'] == acc['id']:
-                            # 스케줄러가 변경하는 필드만 덮어쓰기
-                            fresh_acc['daily_count'] = acc.get('daily_count', 0)
-                            fresh_acc['daily_count_date'] = acc.get('daily_count_date', '')
-                            fresh_acc['last_publish_time'] = acc.get('last_publish_time', '')
-                            if acc.get('token', {}).get('access_token'):
-                                fresh_acc['token'] = acc['token']
-                            break
-                _threads_save_accounts(fresh_data)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            print(f"[threads_scheduler] 루프 에러: {e}")
+
+async def _threads_token_refresh_tick():
+    """APScheduler interval job 콜백 — 토큰 갱신 체크 (1시간마다)."""
+    try:
+        accounts_data = _threads_load_accounts()
+        loop = asyncio.get_running_loop()
+        token_changed = False
+        for acc in accounts_data.get('accounts', []):
+            if acc.get('token', {}).get('access_token'):
+                refreshed = await loop.run_in_executor(executor, _threads_refresh_token, acc)
+                if refreshed:
+                    token_changed = True
+        if token_changed:
+            _threads_save_accounts(accounts_data)
+    except Exception as e:
+        print(f"[threads_scheduler] 토큰 갱신 에러: {e}")
 
 
 async def start_threads_scheduler():
-    """create_app()에서 startup 이벤트로 등록할 함수"""
-    asyncio.create_task(_threads_scheduler_loop())
+    """create_app() startup — APScheduler interval job 등록."""
+    from src.services.scheduler_service import scheduler
+    scheduler.add_job(
+        _threads_scheduler_tick, 'interval',
+        id='threads_queue_tick', seconds=60,
+        replace_existing=True, misfire_grace_time=120,
+    )
+    scheduler.add_job(
+        _threads_token_refresh_tick, 'interval',
+        id='threads_token_refresh', hours=1,
+        replace_existing=True, misfire_grace_time=600,
+    )
 
 
 # ────── 인사이트 ──────

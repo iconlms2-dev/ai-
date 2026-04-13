@@ -223,6 +223,38 @@ def _parse_viral_output(raw):
     return {'title': title, 'body': body}
 
 
+def _build_benchmark_reference_block(community, keyword=None):
+    """커뮤니티 인기글 벤치마킹 결과를 user 프롬프트 참고 블록으로 생성.
+
+    실패 시 빈 문자열 반환 — 기존 COMMUNITY_TONES 하드코딩으로 fallback.
+    크롤링이므로 시간이 오래 걸릴 수 있음 — max_posts=2로 제한.
+    """
+    try:
+        from src.services.benchmark import crawl_community_references
+        refs = crawl_community_references(community, max_posts=2, keyword=keyword)
+        if not refs:
+            return ""
+        lines = [
+            "",
+            "---",
+            f"[참고 레퍼런스: {community} 최근 인기글]",
+            "아래는 현재 해당 커뮤니티에서 반응이 좋은 글의 예시입니다.",
+            "톤과 길이를 참고하되, 위의 작성 규칙이 항상 우선합니다.",
+            "",
+        ]
+        for i, ref in enumerate(refs, 1):
+            title = ref.get("title", "")
+            comments = ref.get("comments", 0)
+            body = ref.get("body_preview", "")
+            lines.append(f'예시{i}: "{title}" (댓글 {comments}개)')
+            if body:
+                lines.append(f"> {body}...")
+            lines.append("")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _build_community_post_prompt(community, strategy, keyword, appeal, buying_one, product, forbidden):
     brand_kw = product.get('brand_keyword', '')
     strategy_label = STRATEGY_NAME.get(strategy, strategy)
@@ -327,6 +359,12 @@ USP: %s
 %s""" % (community, strategy_label, product.get('name',''), product.get('usp',''),
          product.get('target',''), product.get('ingredients',''),
          appeal, buying_one, forbidden_line, brand_kw)
+
+    # 벤치마킹 레퍼런스 추가 (user 프롬프트에만 — 시스템 프롬프트 미수정)
+    bench_ref = _build_benchmark_reference_block(community, keyword)
+    if bench_ref:
+        user += bench_ref
+
     return system, user
 
 

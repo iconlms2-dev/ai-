@@ -1,11 +1,14 @@
-"""쓰레드 v2 파이프라인 — 키워드→콘텐츠 생성→검수→저장."""
+"""쓰레드 v2 파이프라인 — 벤치마킹→키워드→콘텐츠 생성→검수→저장."""
 import argparse
+import logging
 from datetime import datetime
 
 from .base_pipeline import BasePipeline
 from .state_machine import ProjectState
 from .common import call_api, get_event, print_report
 from .rule_validators import validate_threads
+
+logger = logging.getLogger(__name__)
 
 
 class ThreadsPipeline(BasePipeline):
@@ -46,7 +49,29 @@ class ThreadsPipeline(BasePipeline):
             })
 
         elif step == "01_benchmark":
-            data = self.do_benchmark(args)
+            keywords = p.get("keywords", [])
+            try:
+                from src.services.benchmark import crawl_threads_references
+                refs = crawl_threads_references(keywords=keywords, max_posts=5)
+                if refs:
+                    print(f"  Threads 인기 게시물 {len(refs)}개 수집 완료")
+                    avg_chars = sum(r["char_count"] for r in refs) // len(refs)
+                    avg_hashtags = sum(r["hashtag_count"] for r in refs) / len(refs)
+                    data = {
+                        "references": refs,
+                        "patterns": {
+                            "avg_char_count": avg_chars,
+                            "avg_hashtag_count": round(avg_hashtags, 1),
+                            "avg_likes": sum(r["likes"] for r in refs) // len(refs),
+                        },
+                    }
+                else:
+                    print("  Threads 벤치마킹 데이터 없음 — 스킵")
+                    data = {"skipped": True, "reason": "데이터 없음"}
+            except Exception as e:
+                logger.warning("Threads 벤치마킹 오류: %s", e)
+                print(f"  벤치마킹 오류 — 스킵: {e}")
+                data = {"skipped": True, "reason": str(e)}
             p.save_step_file("01_benchmark", "references.json", data)
 
         elif step == "02_strategy":

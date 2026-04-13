@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-selenium
+seleniumbase
 webdriver-manager
 beautifulsoup4
 requests
@@ -13,3 +13,4 @@ yt-dlp
 slack-bolt
 slack-sdk
 apscheduler
+ffmpeg-python

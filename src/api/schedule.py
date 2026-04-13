@@ -325,6 +325,8 @@ async def scheduler_config_set(request: Request):
     if 'weekly' in body:
         data['weekly'] = body['weekly']
     _sched_save(data)
+    # APScheduler job 재등록
+    _sync_weekly_jobs(data)
     return {'ok': True}
 
 
@@ -341,88 +343,109 @@ async def scheduler_history():
     return {'history': data.get('history', [])[-50:]}
 
 
-# ═══════════════════════════ WEEKLY SCHEDULER LOOP ═══════════════════════════
+# ═══════════════════════════ WEEKLY SCHEDULER (APScheduler) ═══════════════════════════
 
-async def _weekly_scheduler_loop():
-    """주간 스케줄러: 1분마다 체크, 시간 매칭 시 알림 또는 자동 실행"""
+async def _fire_daily_task(task_id: str):
+    """APScheduler cron job 콜백 — 매일 알림 발행."""
     global _scheduler_notifications
-    _last_fired = {}
-    while True:
+    data = _sched_load()
+    task = data.get('daily', {}).get(task_id)
+    if not task or not task.get('enabled'):
+        return
+    now = datetime.now()
+    label = task.get('label', task_id)
+    count_msg = ''
+    if task_id == 'generate_remind':
         try:
-            await asyncio.sleep(60)
-            now = datetime.now()
-            today_key = now.strftime('%Y-%m-%d')
-            current_time = now.strftime('%H:%M')
-            current_weekday = now.weekday()
-            data = _sched_load()
+            from src.api.batch import batch_keywords
+            r = await batch_keywords()
+            count_msg = f" ({len(r.get('keywords', []))}개 대기)"
+        except Exception:
+            pass
+    fire_key = f'daily_{task_id}_{now.strftime("%Y-%m-%d")}'
+    _scheduler_notifications.append({
+        'id': fire_key, 'type': 'remind', 'task': task_id,
+        'message': f'{label} 시간입니다{count_msg}',
+        'time': now.isoformat(),
+    })
+    data.setdefault('history', []).append({'task': task_id, 'type': 'remind', 'time': now.isoformat()})
+    if len(data['history']) > 100:
+        data['history'] = data['history'][-100:]
+    _sched_save(data)
 
-            # 매일 알림
-            for task_id, task in data.get('daily', {}).items():
-                if not task.get('enabled'):
-                    continue
-                fire_key = f'daily_{task_id}_{today_key}'
-                if fire_key in _last_fired:
-                    continue
-                if task.get('time') == current_time:
-                    _last_fired[fire_key] = True
-                    label = task.get('label', task_id)
-                    # 미사용 키워드 개수 조회
-                    count_msg = ''
-                    if task_id == 'generate_remind':
-                        try:
-                            from src.api.batch import batch_keywords
-                            r = await batch_keywords()
-                            count_msg = f" ({len(r.get('keywords', []))}개 대기)"
-                        except Exception:
-                            pass
-                    _scheduler_notifications.append({
-                        'id': fire_key, 'type': 'remind', 'task': task_id,
-                        'message': f'{label} 시간입니다{count_msg}',
-                        'time': now.isoformat(),
-                    })
-                    data.setdefault('history', []).append({'task': task_id, 'type': 'remind', 'time': now.isoformat()})
-                    _sched_save(data)
 
-            # 주간 작업
-            for task_id, task in data.get('weekly', {}).items():
-                if not task.get('enabled'):
-                    continue
-                target_day = _DAY_MAP.get(task.get('day', ''), -1)
-                if current_weekday != target_day:
-                    continue
-                fire_key = f'weekly_{task_id}_{today_key}'
-                if fire_key in _last_fired:
-                    continue
-                if task.get('time') == current_time:
-                    _last_fired[fire_key] = True
-                    label = task.get('label', task_id)
-                    auto_run = task.get('auto_run', False)
+async def _fire_weekly_task(task_id: str):
+    """APScheduler cron job 콜백 — 주간 작업 알림/실행."""
+    global _scheduler_notifications
+    data = _sched_load()
+    task = data.get('weekly', {}).get(task_id)
+    if not task or not task.get('enabled'):
+        return
+    now = datetime.now()
+    label = task.get('label', task_id)
+    auto_run = task.get('auto_run', False)
+    fire_key = f'weekly_{task_id}_{now.strftime("%Y-%m-%d")}'
+    if auto_run:
+        _scheduler_notifications.append({
+            'id': fire_key, 'type': 'remind', 'task': task_id,
+            'message': f'{label} 시간입니다 — 대시보드에서 실행하세요',
+            'time': now.isoformat(),
+        })
+    else:
+        _scheduler_notifications.append({
+            'id': fire_key, 'type': 'remind', 'task': task_id,
+            'message': f'{label} 시간입니다',
+            'time': now.isoformat(),
+        })
+    data.setdefault('history', []).append({
+        'task': task_id, 'type': 'auto_run' if auto_run else 'remind',
+        'time': now.isoformat(),
+    })
+    if len(data['history']) > 100:
+        data['history'] = data['history'][-100:]
+    _sched_save(data)
 
-                    if auto_run:
-                        # TODO: 자동 실행 구현 예정. 현재는 알림만.
-                        _scheduler_notifications.append({
-                            'id': fire_key, 'type': 'remind', 'task': task_id,
-                            'message': f'{label} 시간입니다 — 대시보드에서 실행하세요',
-                            'time': now.isoformat(),
-                        })
-                    else:
-                        _scheduler_notifications.append({
-                            'id': fire_key, 'type': 'remind', 'task': task_id,
-                            'message': f'{label} 시간입니다',
-                            'time': now.isoformat(),
-                        })
-                    data.setdefault('history', []).append({
-                        'task': task_id, 'type': 'auto_run' if auto_run else 'remind',
-                        'time': now.isoformat(),
-                    })
-                    if len(data['history']) > 100:
-                        data['history'] = data['history'][-100:]
-                    _sched_save(data)
 
-        except Exception as e:
-            print(f"[weekly_scheduler] 루프 에러: {e}")
+def _sync_weekly_jobs(data=None):
+    """weekly_schedule.json → APScheduler cron job 동기화."""
+    from src.services.scheduler_service import scheduler
+
+    if data is None:
+        data = _sched_load()
+
+    # 기존 weekly_ / daily_ job 제거
+    for job in scheduler.get_jobs():
+        if job.id.startswith('daily_') or job.id.startswith('weekly_'):
+            job.remove()
+
+    # daily job 등록
+    for task_id, task in data.get('daily', {}).items():
+        if not task.get('enabled'):
+            continue
+        t = task.get('time', '09:00')
+        hour, minute = int(t.split(':')[0]), int(t.split(':')[1])
+        scheduler.add_job(
+            _fire_daily_task, 'cron',
+            id=f'daily_{task_id}', hour=hour, minute=minute,
+            args=[task_id], replace_existing=True,
+            misfire_grace_time=300,
+        )
+
+    # weekly job 등록
+    for task_id, task in data.get('weekly', {}).items():
+        if not task.get('enabled'):
+            continue
+        t = task.get('time', '09:00')
+        hour, minute = int(t.split(':')[0]), int(t.split(':')[1])
+        day_of_week = task.get('day', 'mon')
+        scheduler.add_job(
+            _fire_weekly_task, 'cron',
+            id=f'weekly_{task_id}', day_of_week=day_of_week, hour=hour, minute=minute,
+            args=[task_id], replace_existing=True,
+            misfire_grace_time=300,
+        )
 
 
 async def start_weekly_scheduler():
-    """앱 startup 이벤트에서 호출"""
-    asyncio.create_task(_weekly_scheduler_loop())
+    """앱 startup 이벤트에서 호출 — JSON → APScheduler job 등록."""
+    _sync_weekly_jobs()

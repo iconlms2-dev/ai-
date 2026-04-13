@@ -37,7 +37,7 @@ def _prompt_load_overrides():
 # ── 상위글 분석 ──
 
 def _analyze_blog_article(url, keyword):
-    """개별 블로그 글 분석: 사진수, 키워드반복수, 글자수"""
+    """개별 블로그 글 분석: 사진수, 키워드반복수, 글자수, 본문텍스트"""
     try:
         # 네이버 블로그 데스크톱 URL은 iframe 구조라 본문이 비어 있음 → 모바일 URL로 변환
         mobile_url = url if 'm.blog.naver.com' in url else url.replace('blog.naver.com', 'm.blog.naver.com')
@@ -46,11 +46,16 @@ def _analyze_blog_article(url, keyword):
         soup = BeautifulSoup(r.text, 'html.parser')
         # 본문 컨테이너 우선 탐색 (네이버 모바일 블로그 구조)
         content_el = soup.select_one('div.se-main-container') or soup.select_one('div#viewTypeSelector') or soup
-        body = content_el.get_text()
+        body = content_el.get_text(separator='\n', strip=True)
         char_count = len(body.replace(' ', '').replace('\n', '').replace('\t', ''))
         photo_count = len(soup.find_all('img', src=re.compile(r'postfiles|blogfiles|phinf')))
         kw_repeat = body.lower().count(keyword.lower())
-        return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1), 'char_count': char_count}
+        return {
+            'photo_count': max(photo_count, 1),
+            'keyword_repeat': max(kw_repeat, 1),
+            'char_count': char_count,
+            'body_text': body,  # 본문 텍스트 (참고용)
+        }
     except Exception as e:
         print(f"[_analyze_blog_article] {url}: {e}")
         return None
@@ -78,15 +83,27 @@ def _analyze_top_for_blog(keyword):
                 results.append(a)
             time.sleep(0.5)
         if not results:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': ''}
+        avg_char = round(sum(r.get('char_count', 0) for r in results) / len(results))
+        # 상위글 중 평균 글자수에 가장 가까운 1개의 본문을 참고용으로 선택
+        reference_body = ''
+        best_diff = float('inf')
+        for r in results:
+            body = r.get('body_text', '')
+            if body:
+                diff = abs(r.get('char_count', 0) - avg_char)
+                if diff < best_diff:
+                    best_diff = diff
+                    reference_body = body[:2000]  # 최대 2000자
         return {
             'photo_count': max(round(sum(r['photo_count'] for r in results) / len(results)), 3),
             'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
-            'char_count': round(sum(r.get('char_count', 0) for r in results) / len(results))
+            'char_count': avg_char,
+            'reference_body': reference_body,
         }
     except Exception as e:
         print(f"[_analyze_top_for_blog] {e}")
-        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
+        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': ''}
 
 
 # ── 프롬프트 빌더 ──
@@ -118,7 +135,7 @@ def _build_blog_title_prompt(keyword, product):
     return system, user
 
 
-def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat, title='', char_target=0):
+def _build_blog_body_prompt(keyword, stage, product, photo_count, keyword_repeat, title='', char_target=0, reference_body=''):
     """블로그 본문 프롬프트 (STEP 2) — {title}에 STEP 1 결과가 들어옴"""
     # A3: 상위글 평균 글자수 기반 동적 설정 (멘토 가이드: 상위글 평균의 90~110%)
     if char_target and char_target > 0:
@@ -330,6 +347,18 @@ __CHAR_RULE__
 
 위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."""
 
+    # 상위글 참고 본문 추가 (user 프롬프트에만 — 시스템 프롬프트 미수정)
+    if reference_body:
+        user += f"""
+
+---
+[참고 상위글]
+아래는 현재 네이버 검색 상위에 노출된 블로그 글의 본문 일부입니다.
+전개 흐름과 톤을 참고하되, 위의 작성 규칙이 항상 우선합니다.
+절대 내용을 베끼지 말고, 구조와 분위기만 참고하세요.
+
+{reference_body}"""
+
     return system, user
 
 
@@ -457,11 +486,12 @@ async def blog_build_prompt(request: Request):
             title = title.split('\n')[0].strip()
 
         # 3. 본문 프롬프트 조립 (API 호출 X)
+        ref_body = analysis.get('reference_body', '')
         body_sys = overrides.get('블로그_본문', None)
         if body_sys:
             body_usr = f"[시스템 자동 전달]\n제목: {title}\n\n[사용자 입력]\n상위 노출 키워드: {kw}\n제품명: {product.get('name','')}\n제품 USP (차별 포인트): {product.get('usp','')}\n타겟층: {product.get('target','')}\n주요 성분: {product.get('ingredients','')}\n나만의 키워드: {product.get('brand_keyword','')}\n구매여정 단계: {stage}\n사진 수: {pc}장\n키워드 반복 수: {kr}회\n\n위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."
         else:
-            body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
+            body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct, reference_body=ref_body)
         combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{body_sys}\n\n---\n\n{body_usr}"
 
         results.append({
@@ -522,11 +552,12 @@ async def blog_generate(request: Request):
             ct_info = '상위글%d자, ' % ct if ct else ''
             msg3 = '[%d/%d] %s — 본문 생성 중... (%s사진%d장, 키워드%d회)' % (i+1, total, kw, ct_info, pc, kr)
             yield _sse({'type': 'progress', 'msg': msg3, 'cur': i, 'total': total})
+            ref_body = analysis.get('reference_body', '')
             body_sys = overrides.get('블로그_본문', None)
             if body_sys:
                 body_usr = f"[시스템 자동 전달]\n제목: {title}\n\n[사용자 입력]\n상위 노출 키워드: {kw}\n제품명: {product.get('name','')}\n제품 USP (차별 포인트): {product.get('usp','')}\n타겟층: {product.get('target','')}\n주요 성분: {product.get('ingredients','')}\n나만의 키워드: {product.get('brand_keyword','')}\n구매여정 단계: {stage}\n사진 수: {pc}장\n키워드 반복 수: {kr}회\n\n위 정보를 기반으로, 제목과 맥락이 맞는 후기형 블로그 본문을 작성해주세요."
             else:
-                body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct)
+                body_sys, body_usr = _build_blog_body_prompt(kw, stage, product, pc, kr, title, char_target=ct, reference_body=ref_body)
             body_text = await loop.run_in_executor(executor, call_claude, body_sys, body_usr)
             body_text = body_text.strip()
 
