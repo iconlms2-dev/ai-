@@ -10,7 +10,8 @@ from urllib.parse import quote
 import openpyxl
 import requests as req
 from fastapi import APIRouter, Request, UploadFile, File
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import Response
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor, selenium_semaphore, GEMINI_API_KEY, PROGRESS_FILE, KEYWORD_DB_ID,
@@ -61,11 +62,11 @@ async def expand_keywords(request: Request):
 
         for s in seeds:
             all_kws[s] = '시드'
-            yield f"data: {json.dumps({'type':'keyword','keyword':s,'source':'시드'}, ensure_ascii=False)}\n\n"
+            yield sse_dict({'type':'keyword','keyword':s,'source':'시드'})
 
         loop = asyncio.get_running_loop()
 
-        yield f"data: {json.dumps({'type':'progress','msg':'브라우저 시작 중...','cur':0,'total':0}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'progress','msg':'브라우저 시작 중...','cur':0,'total':0})
         await selenium_semaphore.acquire()
         driver = None
         try:
@@ -74,37 +75,37 @@ async def expand_keywords(request: Request):
             if mode == 'excel':
                 # ── 모드1: 엑셀 기반 1회 확장 (자완/연관/함께찾는만) ──
                 total = len(seeds)
-                yield f"data: {json.dumps({'type':'progress','msg':f'엑셀 기반 확장: {total}개 키워드의 자완/연관/함께찾는 수집','cur':0,'total':total}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'progress','msg':f'엑셀 기반 확장: {total}개 키워드의 자완/연관/함께찾는 수집','cur':0,'total':total})
 
                 for i, kw in enumerate(seeds):
                     if kw in visited:
                         continue
                     visited.add(kw)
 
-                    yield f"data: {json.dumps({'type':'progress','msg':f'확장 중: {kw} ({i+1}/{total}) | 누적 {len(all_kws)}개','cur':i+1,'total':total}, ensure_ascii=False)}\n\n"
+                    yield sse_dict({'type':'progress','msg':f'확장 중: {kw} ({i+1}/{total}) | 누적 {len(all_kws)}개','cur':i+1,'total':total})
 
                     ac = await loop.run_in_executor(executor, autocomplete, kw)
                     for ak in ac:
                         if valid_kw(ak) and ak not in all_kws:
                             all_kws[ak] = '자동완성'
-                            yield f"data: {json.dumps({'type':'keyword','keyword':ak,'source':'자동완성'}, ensure_ascii=False)}\n\n"
+                            yield sse_dict({'type':'keyword','keyword':ak,'source':'자동완성'})
 
                     related = await loop.run_in_executor(executor, expand_selenium, driver, kw)
                     for rk, src in related.items():
                         if rk not in all_kws:
                             all_kws[rk] = src
-                            yield f"data: {json.dumps({'type':'keyword','keyword':rk,'source':src}, ensure_ascii=False)}\n\n"
+                            yield sse_dict({'type':'keyword','keyword':rk,'source':src})
 
                     # 10개 시드마다 중간 저장
                     if (i + 1) % 10 == 0:
                         remaining_seeds = seeds[i+1:]
                         expand_snapshot = [{'keyword': k, 'source': s} for k, s in all_kws.items()]
                         await loop.run_in_executor(executor, save_progress, expand_snapshot, remaining_seeds)
-                        yield f"data: {json.dumps({'type':'saved','count':len(all_kws),'msg':f'중간 저장 완료 ({len(all_kws)}개)'}, ensure_ascii=False)}\n\n"
+                        yield sse_dict({'type':'saved','count':len(all_kws),'msg':f'중간 저장 완료 ({len(all_kws)}개)'})
 
                     await asyncio.sleep(1.5)
 
-                yield f"data: {json.dumps({'type':'progress','msg':f'엑셀 기반 확장 완료. 총 {len(all_kws)}개','cur':total,'total':total}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'progress','msg':f'엑셀 기반 확장 완료. 총 {len(all_kws)}개','cur':total,'total':total})
 
             else:
                 # ── 모드2: 반복 확장 (기존 BFS) ──
@@ -116,21 +117,21 @@ async def expand_keywords(request: Request):
                     current_batch = list(queue)
                     queue = []
 
-                    yield f"data: {json.dumps({'type':'progress','msg':f'[라운드 {round_num}] {len(current_batch)}개 키워드 확장 시작 (누적 {len(all_kws)}개)','cur':0,'total':len(current_batch)}, ensure_ascii=False)}\n\n"
+                    yield sse_dict({'type':'progress','msg':f'[라운드 {round_num}] {len(current_batch)}개 키워드 확장 시작 (누적 {len(all_kws)}개)','cur':0,'total':len(current_batch)})
 
                     for i, kw in enumerate(current_batch):
                         if kw in visited:
                             continue
                         visited.add(kw)
 
-                        yield f"data: {json.dumps({'type':'progress','msg':f'[라운드 {round_num}] 확장 중: {kw} ({i+1}/{len(current_batch)}) | 누적 {len(all_kws)}개','cur':i+1,'total':len(current_batch)}, ensure_ascii=False)}\n\n"
+                        yield sse_dict({'type':'progress','msg':f'[라운드 {round_num}] 확장 중: {kw} ({i+1}/{len(current_batch)}) | 누적 {len(all_kws)}개','cur':i+1,'total':len(current_batch)})
                         ac = await loop.run_in_executor(executor, autocomplete, kw)
                         for ak in ac:
                             if valid_kw(ak) and ak not in all_kws:
                                 all_kws[ak] = '자동완성'
                                 if ak not in visited:
                                     queue.append(ak)
-                                yield f"data: {json.dumps({'type':'keyword','keyword':ak,'source':'자동완성'}, ensure_ascii=False)}\n\n"
+                                yield sse_dict({'type':'keyword','keyword':ak,'source':'자동완성'})
 
                         related = await loop.run_in_executor(executor, expand_selenium, driver, kw)
                         for rk, src in related.items():
@@ -138,15 +139,15 @@ async def expand_keywords(request: Request):
                                 all_kws[rk] = src
                                 if rk not in visited:
                                     queue.append(rk)
-                                yield f"data: {json.dumps({'type':'keyword','keyword':rk,'source':src}, ensure_ascii=False)}\n\n"
+                                yield sse_dict({'type':'keyword','keyword':rk,'source':src})
 
                         await asyncio.sleep(1.5)
 
                     new_count = len(queue)
-                    yield f"data: {json.dumps({'type':'progress','msg':f'[라운드 {round_num} 완료] 신규 {new_count}개 발견 → 누적 {len(all_kws)}개','cur':len(current_batch),'total':len(current_batch)}, ensure_ascii=False)}\n\n"
+                    yield sse_dict({'type':'progress','msg':f'[라운드 {round_num} 완료] 신규 {new_count}개 발견 → 누적 {len(all_kws)}개','cur':len(current_batch),'total':len(current_batch)})
 
                     if not queue:
-                        yield f"data: {json.dumps({'type':'progress','msg':f'더 이상 새로운 키워드 없음. 총 {round_num}라운드 완료.','cur':1,'total':1}, ensure_ascii=False)}\n\n"
+                        yield sse_dict({'type':'progress','msg':f'더 이상 새로운 키워드 없음. 총 {round_num}라운드 완료.','cur':1,'total':1})
         finally:
             if driver:
                 await loop.run_in_executor(executor, driver.quit)
@@ -154,7 +155,7 @@ async def expand_keywords(request: Request):
 
         # ── 검색량 조회 ──
         kw_list = [k for k in all_kws.keys() if valid_kw(k)]
-        yield f"data: {json.dumps({'type':'progress','msg':f'검색량 조회 중... ({len(kw_list)}개)','cur':0,'total':1}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'progress','msg':f'검색량 조회 중... ({len(kw_list)}개)','cur':0,'total':1})
         vol = await loop.run_in_executor(executor, search_volume, kw_list)
 
         result_list = []
@@ -170,12 +171,12 @@ async def expand_keywords(request: Request):
                 'total': pc + mo,
             })
 
-        yield f"data: {json.dumps({'type':'complete','keywords':result_list,'total':len(result_list)}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'complete','keywords':result_list,'total':len(result_list)})
       except Exception as e:
         print(f"[expand_keywords] 에러: {e}")
-        yield f"data: {json.dumps({'type':'error','message':f'키워드 확장 중 오류: {e}'}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'error','message':f'키워드 확장 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 # ── 검색량 조회 ──
@@ -213,7 +214,7 @@ async def analyze_keywords(request: Request):
                 remaining = prog.get('remaining', [])
                 keywords_to_process = remaining
                 start_idx = len(results)
-                yield f"data: {json.dumps({'type':'resume','existing':results,'start':start_idx}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'resume','existing':results,'start':start_idx})
             else:
                 keywords_to_process = keywords
         else:
@@ -222,12 +223,12 @@ async def analyze_keywords(request: Request):
         total = start_idx + len(keywords_to_process)
 
         # 검색량 배치 조회
-        yield f"data: {json.dumps({'type':'progress','msg':'검색량 조회 중...','cur':0,'total':total}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'progress','msg':'검색량 조회 중...','cur':0,'total':total})
         vol = await loop.run_in_executor(executor, search_volume, keywords_to_process)
 
         for i, kw in enumerate(keywords_to_process):
             idx = start_idx + i + 1
-            yield f"data: {json.dumps({'type':'progress','msg':f'분석 중: {kw}','cur':idx,'total':total}, ensure_ascii=False)}\n\n"
+            yield sse_dict({'type':'progress','msg':f'분석 중: {kw}','cur':idx,'total':total})
 
             try:
                 # SERP 분석
@@ -250,13 +251,13 @@ async def analyze_keywords(request: Request):
             }
             results.append(row)
 
-            yield f"data: {json.dumps({'type':'result','row':row,'cur':idx,'total':total}, ensure_ascii=False)}\n\n"
+            yield sse_dict({'type':'result','row':row,'cur':idx,'total':total})
 
             # 30개마다 중간저장
             if idx % 30 == 0:
                 remaining = keywords_to_process[i+1:]
                 await loop.run_in_executor(executor, save_progress, results, remaining)
-                yield f"data: {json.dumps({'type':'saved','count':len(results)}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'saved','count':len(results)})
 
             await asyncio.sleep(1.5)
 
@@ -264,12 +265,12 @@ async def analyze_keywords(request: Request):
         if os.path.exists(PROGRESS_FILE):
             os.remove(PROGRESS_FILE)
 
-        yield f"data: {json.dumps({'type':'complete','total':len(results)}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'complete','total':len(results)})
       except Exception as e:
         print(f"[analyze_keywords] 에러: {e}")
-        yield f"data: {json.dumps({'type':'error','message':f'키워드 분석 중 오류: {e}'}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'error','message':f'키워드 분석 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 # ── 노션 저장 ──

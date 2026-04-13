@@ -9,7 +9,8 @@ from datetime import datetime
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor, BASE_DIR, CONTENT_DB_ID, NOTION_TOKEN, GEMINI_API_KEY,
@@ -297,8 +298,7 @@ async def youtube_generate(request: Request):
     product_name = body.get('product_name', '')
     brand_keyword = body.get('brand_keyword', product_name)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -343,7 +343,7 @@ async def youtube_generate(request: Request):
         print(f"[youtube_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'유튜브 댓글 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/save-notion")
@@ -369,8 +369,9 @@ async def youtube_save_notion(request: Request):
         payload['children'] = children
 
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -660,8 +661,8 @@ async def yt_auto_post(request: Request):
                                 "댓글 url": {"url": comment_url},
                                 "상태": {"select": {"name": "댓글완료"}},
                             }}
-                            req.patch(f'https://api.notion.com/v1/pages/{page_id}',
-                                     headers=_headers_n, json=_payload, timeout=15)
+                            from src.services.notion_client import update_page
+                            update_page(page_id, _payload["properties"])
                         except Exception:
                             pass
                 else:

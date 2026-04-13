@@ -8,7 +8,8 @@ import threading
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN, BASE_DIR
 from src.services.ai_client import call_claude
@@ -444,8 +445,7 @@ async def community_generate(request: Request):
     forbidden = body.get('forbidden', '')
     include_comments = body.get('include_comments', True)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -491,7 +491,7 @@ async def community_generate(request: Request):
         print(f"[community_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'커뮤니티 침투글 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/save-notion")
@@ -526,7 +526,8 @@ async def community_save_notion(request: Request):
                     'paragraph': {'rich_text': [{'type': 'text', 'text': {'content': para[k:k+2000]}}]}})
         payload['children'] = children[:100]
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}

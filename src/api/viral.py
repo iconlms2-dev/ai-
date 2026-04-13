@@ -9,7 +9,8 @@ import threading
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import executor, CONTENT_DB_ID, NOTION_TOKEN, VIRAL_ACCOUNTS_FILE
 from src.services.common import error_response
@@ -455,8 +456,7 @@ async def viral_generate(request: Request):
     ingredients = product.get('ingredients', '')
     product_category = product.get('product_category', '')
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
         try:
@@ -526,7 +526,7 @@ async def viral_generate(request: Request):
             print(f"[viral_generate] 에러: {e}")
             yield _sse({'type': 'error', 'message': f'카페바이럴 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/generate-stage")
@@ -557,8 +557,7 @@ async def viral_generate_stage(request: Request):
             if not prod_check['allowed']:
                 return JSONResponse({'error': prod_check['reason']}, 400)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
         try:
@@ -606,7 +605,7 @@ async def viral_generate_stage(request: Request):
         except Exception as e:
             yield _sse({'type': 'error', 'message': str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/accounts/{acc_id}/plan")
@@ -706,7 +705,8 @@ async def viral_save_notion(request: Request):
         payload['children'] = children[:100]
 
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}

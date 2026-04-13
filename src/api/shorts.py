@@ -8,9 +8,10 @@ from datetime import datetime
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from src.services.config import executor, ELEVENLABS_API_KEY, SHORTS_DIR
+from src.services.sse_helper import sse_dict, SSEResponse
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
 from src.pipeline_v2.workflow import WorkflowConfig
@@ -231,8 +232,7 @@ async def shorts_topics(request: Request):
     material = body.get("material", {})
     content_type = body.get("type", "썰형")
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -250,7 +250,7 @@ async def shorts_topics(request: Request):
         print(f"[shorts_topics] 에러: {e}")
         yield _sse({"type": "error", "message": f"주제 생성 중 오류: {e}"})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/script")
@@ -262,8 +262,7 @@ async def shorts_script(request: Request):
     topic = body.get("topic", "")
     length = body.get("length", 600)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -289,7 +288,7 @@ async def shorts_script(request: Request):
         print(f"[shorts_script] 에러: {e}")
         yield _sse({"type": "error", "message": f"대본 생성 중 오류: {e}"})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/hooks")
@@ -298,8 +297,7 @@ async def shorts_hooks(request: Request):
     body = await request.json()
     script = body.get("script", "")
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -318,7 +316,7 @@ async def shorts_hooks(request: Request):
         print(f"[shorts_hooks] 에러: {e}")
         yield _sse({"type": "error", "message": f"훅 생성 중 오류: {e}"})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/tts")
@@ -334,8 +332,7 @@ async def shorts_tts(request: Request):
     if not voice_id:
         return JSONResponse({"error": "음성을 선택하세요"}, 400)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -403,7 +400,7 @@ async def shorts_tts(request: Request):
         print(f"[shorts_tts] 에러: {e}")
         yield _sse({"type": "error", "message": f"TTS 생성 중 오류: {e}"})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.get("/download/{filename}")
@@ -437,8 +434,7 @@ async def shorts_run_pipeline(request: Request):
     content_type = body.get("type", "썰형")
     length = body.get("length", 600)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -500,7 +496,7 @@ async def shorts_run_pipeline(request: Request):
         print(f"[shorts_run_pipeline] 에러: {e}")
         yield _sse({"type": "error", "message": f"파이프라인 오류: {e}"})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/brief")
@@ -512,8 +508,7 @@ async def shorts_brief(request: Request):
     content_type = body.get("content_type", "썰형")
     patterns = body.get("patterns", {})
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -554,7 +549,7 @@ CTA: {material.get('cta', '')}"""
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/analyze-refs")
@@ -563,8 +558,7 @@ async def shorts_analyze_refs(request: Request):
     body = await request.json()
     references_text = body.get("references_text", "")
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -599,7 +593,7 @@ async def shorts_analyze_refs(request: Request):
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/extract-patterns")
@@ -608,8 +602,7 @@ async def shorts_extract_patterns(request: Request):
     body = await request.json()
     analyses_text = body.get("analyses_text", "")
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -639,7 +632,7 @@ async def shorts_extract_patterns(request: Request):
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/storyboard")
@@ -647,8 +640,7 @@ async def shorts_storyboard(request: Request):
     """스토리보드 (씬 설계)"""
     body = await request.json()
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -705,7 +697,7 @@ async def shorts_storyboard(request: Request):
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/image-prompts")
@@ -713,8 +705,7 @@ async def shorts_image_prompts(request: Request):
     """씬별 이미지 생성 프롬프트"""
     body = await request.json()
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -754,7 +745,7 @@ async def shorts_image_prompts(request: Request):
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/youtube-meta")
@@ -762,8 +753,7 @@ async def shorts_youtube_meta(request: Request):
     """YouTube 업로드 메타데이터 생성"""
     body = await request.json()
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -802,4 +792,4 @@ JSON 형식:
       except Exception as e:
         yield _sse({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())

@@ -1,21 +1,55 @@
-"""파일시스템 기반 상태 머신.
+"""파일시스템 기반 상태 머신 — transitions 라이브러리 적용.
 
 각 프로젝트 = 폴더.  각 단계 완료 = 해당 파일 존재.
 중간에 멈춰도 폴더 스캔 → 미완료 단계부터 재개.
+
+transitions 장점:
+- 콜백 (on_enter_*, on_exit_*) → 상태 변경 시 자동 저장/로깅
+- 조건부 전이 (conditions) → 리비전 횟수 체크 등
+- 상세 에러 메시지 → 잘못된 전이 시도 시 가능한 전이 목록 표시
 """
 import json
+import logging
 import os
-import shutil
 from datetime import datetime
 from typing import Optional
 
+from transitions import Machine, MachineError
+
+logger = logging.getLogger(__name__)
 
 # ── 프로젝트 루트 ──
 PROJECTS_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "projects")
 os.makedirs(PROJECTS_ROOT, exist_ok=True)
 
 
-# ── 상태 전이표 (CLAUDE.md 강제) ──
+# ── 상태 & 전이 정의 (CLAUDE.md 강제) ──
+STATES = ["draft", "under_review", "revision", "approved", "publish_ready", "uploading", "published"]
+
+TRANSITIONS = [
+    {"trigger": "submit_review", "source": "draft", "dest": "under_review"},
+    {"trigger": "request_revision", "source": "under_review", "dest": "revision"},
+    {"trigger": "approve", "source": "under_review", "dest": "approved"},
+    {"trigger": "resubmit", "source": "revision", "dest": "under_review"},
+    {"trigger": "mark_ready", "source": "approved", "dest": "publish_ready"},
+    {"trigger": "start_upload", "source": "publish_ready", "dest": "uploading"},
+    {"trigger": "publish_from_ready", "source": "publish_ready", "dest": "published"},
+    {"trigger": "publish_from_upload", "source": "uploading", "dest": "published"},
+]
+
+# 하위호환: 기존 코드에서 transition("under_review") 같은 직접 상태명 호출용
+_TRANSITION_MAP = {
+    ("draft", "under_review"): "submit_review",
+    ("under_review", "revision"): "request_revision",
+    ("under_review", "approved"): "approve",
+    ("revision", "under_review"): "resubmit",
+    ("approved", "publish_ready"): "mark_ready",
+    ("publish_ready", "uploading"): "start_upload",
+    ("publish_ready", "published"): "publish_from_ready",
+    ("uploading", "published"): "publish_from_upload",
+}
+
+# 하위호환: 기존 ALLOWED_TRANSITIONS dict
 ALLOWED_TRANSITIONS = {
     "draft": ["under_review"],
     "under_review": ["revision", "approved"],
@@ -27,7 +61,7 @@ ALLOWED_TRANSITIONS = {
 
 
 class ProjectState:
-    """단일 프로젝트의 상태를 관리."""
+    """단일 프로젝트의 상태를 관리. transitions 라이브러리 내장."""
 
     def __init__(self, channel: str, project_id: str):
         self.channel = channel
@@ -36,6 +70,53 @@ class ProjectState:
         self.status_file = os.path.join(self.root, "status.json")
         os.makedirs(self.root, exist_ok=True)
 
+        # transitions Machine은 _init_machine()에서 초기화
+        self._machine = None
+
+    def _init_machine(self, initial_state: str = "draft"):
+        """transitions Machine 초기화."""
+        self._machine = Machine(
+            model=self,
+            states=STATES,
+            transitions=TRANSITIONS,
+            initial=initial_state,
+            auto_transitions=False,  # 자동 전이 비활성화 (명시적 전이만)
+            send_event=True,  # 콜백에 EventData 전달
+        )
+
+    # ── 콜백: 상태 진입 시 자동 저장 + 로깅 ──
+
+    def on_enter_under_review(self, event):
+        logger.info("[%s/%s] → under_review", self.channel, self.project_id)
+        self._persist_status()
+
+    def on_enter_revision(self, event):
+        logger.info("[%s/%s] → revision", self.channel, self.project_id)
+        self._persist_status()
+
+    def on_enter_approved(self, event):
+        logger.info("[%s/%s] → approved", self.channel, self.project_id)
+        self._persist_status()
+
+    def on_enter_publish_ready(self, event):
+        logger.info("[%s/%s] → publish_ready", self.channel, self.project_id)
+        self._persist_status()
+
+    def on_enter_uploading(self, event):
+        logger.info("[%s/%s] → uploading", self.channel, self.project_id)
+        self._persist_status()
+
+    def on_enter_published(self, event):
+        logger.info("[%s/%s] → published", self.channel, self.project_id)
+        self._persist_status()
+
+    def _persist_status(self):
+        """현재 상태를 status.json에 기록."""
+        if os.path.exists(self.status_file):
+            s = self._load_status()
+            s["status"] = self.state
+            self._save_status(s)
+
     # ── 생성 / 로드 ──
 
     @classmethod
@@ -43,6 +124,7 @@ class ProjectState:
         if project_id is None:
             project_id = f"{channel}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         ps = cls(channel, project_id)
+        ps._init_machine("draft")
         status = {
             "project_id": project_id,
             "channel": channel,
@@ -62,6 +144,8 @@ class ProjectState:
         ps = cls(channel, project_id)
         if not os.path.exists(ps.status_file):
             raise FileNotFoundError(f"프로젝트 없음: {ps.root}")
+        current_status = ps._load_status().get("status", "draft")
+        ps._init_machine(current_status)
         return ps
 
     @classmethod
@@ -73,7 +157,10 @@ class ProjectState:
         for d in dirs:
             sf = os.path.join(channel_dir, d, "status.json")
             if os.path.exists(sf):
-                return cls(channel, d)
+                ps = cls(channel, d)
+                current_status = ps._load_status().get("status", "draft")
+                ps._init_machine(current_status)
+                return ps
         return None
 
     # ── 상태 읽기 / 쓰기 ──
@@ -99,19 +186,33 @@ class ProjectState:
         s.update(kwargs)
         self._save_status(s)
 
-    # ── 상태 전이 (CLAUDE.md 강제) ──
+    # ── 상태 전이 (하위호환: 기존 transition(new_status) 인터페이스 유지) ──
 
     def transition(self, new_status: str):
-        s = self._load_status()
-        current = s["status"]
-        allowed = ALLOWED_TRANSITIONS.get(current, [])
-        if new_status not in allowed:
+        """기존 인터페이스 호환. transition("approved") 형태로 호출."""
+        if self._machine is None:
+            current = self._load_status().get("status", "draft")
+            self._init_machine(current)
+
+        current = self.state
+        trigger_name = _TRANSITION_MAP.get((current, new_status))
+
+        if trigger_name is None:
+            allowed = ALLOWED_TRANSITIONS.get(current, [])
             raise ValueError(
                 f"상태 전이 불가: {current} → {new_status} "
                 f"(허용: {allowed})"
             )
-        s["status"] = new_status
-        self._save_status(s)
+
+        try:
+            getattr(self, trigger_name)()
+        except MachineError as e:
+            allowed = ALLOWED_TRANSITIONS.get(current, [])
+            raise ValueError(
+                f"상태 전이 불가: {current} → {new_status} "
+                f"(허용: {allowed}) — {e}"
+            ) from e
+        # on_enter_* 콜백이 _persist_status()로 이미 status.json 갱신 완료
 
     # ── 단계 파일 관리 ──
 

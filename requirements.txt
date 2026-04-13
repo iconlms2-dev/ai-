@@ -14,3 +14,6 @@ slack-bolt
 slack-sdk
 apscheduler
 ffmpeg-python
+notion-client
+transitions
+sse-starlette

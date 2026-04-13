@@ -1,16 +1,20 @@
 """키워드 현황 — 채널 배정, 작업 기록, 동기화, 노출 체크"""
 import json
 import asyncio
+import logging
 from urllib.parse import quote
 
 import requests as req
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import executor, NOTION_TOKEN, KEYWORD_DB_ID, CONTENT_DB_ID
 from src.services.common import error_response
 from src.services.notion_client import notion_query_all, extract_prop, notion_headers
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,10 +59,11 @@ async def assign_channel(body: dict):
     }
     props = {'배정 채널': {'multi_select': [{'name': ch} for ch in channels]}}
     try:
-        r = req.patch(f'https://api.notion.com/v1/pages/{page_id}',
-                      headers=headers, json={'properties': props}, timeout=10)
-        return {'ok': r.status_code == 200}
-    except Exception:
+        from src.services.notion_client import update_page
+        result = update_page(page_id, props)
+        return {'ok': result['success']}
+    except Exception as e:
+        logger.error("assign_channel 실패: %s", e)
         return JSONResponse({'ok': False, 'error': 'Notion API error'}, 500)
 
 
@@ -90,10 +95,15 @@ async def record_work(body: dict):
         except Exception:
             pass
     try:
-        r = req.patch(f'https://api.notion.com/v1/pages/{page_id}',
-                      headers=headers, json={'properties': props}, timeout=10)
-        return {'ok': r.status_code == 200}
-    except Exception:
+        from src.services.notion_client import update_page
+        from src.services.indexnow import submit_url
+        result = update_page(page_id, props)
+        # 발행 URL이 있으면 IndexNow로 검색엔진에 즉시 알림
+        if result['success'] and body.get('posted_url'):
+            submit_url(body['posted_url'])
+        return {'ok': result['success']}
+    except Exception as e:
+        logger.error("record_work 실패: %s", e)
         return JSONResponse({'ok': False, 'error': 'Notion API error'}, 500)
 
 
@@ -182,8 +192,7 @@ async def check_exposure(request: Request):
     body = await request.json()
     items = body.get('items', [])  # [{keyword, deploy_url}, ...]
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -204,4 +213,4 @@ async def check_exposure(request: Request):
         print(f"[check_exposure] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'노출 체크 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())

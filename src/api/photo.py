@@ -10,7 +10,8 @@ from urllib.parse import quote
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response
+from src.services.sse_helper import sse_dict, SSEResponse
 from selenium.webdriver.common.by import By
 
 from src.services.config import BASE_DIR, executor, GEMINI_API_KEY, selenium_semaphore
@@ -214,7 +215,7 @@ async def photo_crawl(request: Request):
     async def generate():
       try:
         loop = asyncio.get_running_loop()
-        yield f"data: {json.dumps({'type':'progress','msg':'브라우저 시작 중...','cur':0,'total':0}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'progress','msg':'브라우저 시작 중...','cur':0,'total':0})
         await selenium_semaphore.acquire()
         driver = None
         try:
@@ -222,15 +223,15 @@ async def photo_crawl(request: Request):
 
             all_urls = []
             if "baidu" in sources:
-                yield f"data: {json.dumps({'type':'progress','msg':f'바이두 이미지 검색: {query_zh}','cur':0,'total':count}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'progress','msg':f'바이두 이미지 검색: {query_zh}','cur':0,'total':count})
                 baidu_urls = await loop.run_in_executor(executor, _crawl_baidu_images, driver, query_zh, count)
                 all_urls.extend([("baidu", u) for u in baidu_urls])
 
             if "xhs" in sources:
-                yield f"data: {json.dumps({'type':'progress','msg':f'샤오홍슈 검색: {query_zh}','cur':0,'total':count}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'progress','msg':f'샤오홍슈 검색: {query_zh}','cur':0,'total':count})
                 xhs_urls = await loop.run_in_executor(executor, _crawl_xhs_images, query_zh, count)
                 if not xhs_urls:
-                    yield f"data: {json.dumps({'type':'progress','msg':'⚠️ 샤오홍슈 수집 실패 (로그인/캡챠 차단 확인)','cur':0,'total':count}, ensure_ascii=False)}\n\n"
+                    yield sse_dict({'type':'progress','msg':'⚠️ 샤오홍슈 수집 실패 (로그인/캡챠 차단 확인)','cur':0,'total':count})
                 all_urls.extend([("xhs", u) for u in xhs_urls])
         finally:
             if driver:
@@ -249,22 +250,22 @@ async def photo_crawl(request: Request):
                 ext = "webp"
             filename = f"{src}_{ts}_{i}.{ext}"
 
-            yield f"data: {json.dumps({'type':'progress','msg':f'다운로드 중 ({i+1}/{total})','cur':i+1,'total':total}, ensure_ascii=False)}\n\n"
+            yield sse_dict({'type':'progress','msg':f'다운로드 중 ({i+1}/{total})','cur':i+1,'total':total})
 
             ok = await loop.run_in_executor(executor, _download_image, url, filename, category)
             if ok:
                 downloaded += 1
                 # 프론트엔드 호환성을 위해 filename은 상대경로처럼 전달
                 rel_filename = f"{category}/{filename}"
-                yield f"data: {json.dumps({'type':'image','filename':rel_filename,'category':category}, ensure_ascii=False)}\n\n"
+                yield sse_dict({'type':'image','filename':rel_filename,'category':category})
             await asyncio.sleep(0.3)
 
-        yield f"data: {json.dumps({'type':'complete','total':downloaded}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'complete','total':downloaded})
       except Exception as e:
         print(f"[photo_crawl] 에러: {e}")
-        yield f"data: {json.dumps({'type':'error','message':f'이미지 수집 중 오류: {e}'}, ensure_ascii=False)}\n\n"
+        yield sse_dict({'type':'error','message':f'이미지 수집 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.get("/thumb/{filename:path}")

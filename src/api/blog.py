@@ -9,7 +9,7 @@ from urllib.parse import quote
 import requests as req
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from src.services.config import (
     executor, KEYWORD_DB_ID, CONTENT_DB_ID, NOTION_TOKEN, BASE_DIR,
@@ -17,6 +17,7 @@ from src.services.config import (
 from src.services.common import error_response
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
+from src.services.sse_helper import sse_dict, SSEResponse
 
 router = APIRouter()
 
@@ -388,10 +389,8 @@ async def blog_notion_keywords():
         'page_size': 100,
     }
     try:
-        r = req.post(f'https://api.notion.com/v1/databases/{KEYWORD_DB_ID}/query', headers=headers, json=payload, timeout=15)
-        if r.status_code != 200:
-            return {'keywords': [], 'error': r.text[:300]}
-        data = r.json()
+        from src.services.notion_client import query_database
+        data = query_database(KEYWORD_DB_ID, filter_obj=payload['filter'], page_size=100)
         keywords = []
         for page in data.get('results', []):
             props = page.get('properties', {})
@@ -516,8 +515,7 @@ async def blog_generate(request: Request):
     keywords = body.get('keywords', [])
     product = body.get('product', {})
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -611,7 +609,7 @@ async def blog_generate(request: Request):
         print(f"[blog_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'블로그 원고 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/save-notion")
@@ -655,7 +653,8 @@ async def blog_save_notion(request: Request):
         payload['children'] = children[:100]
 
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}

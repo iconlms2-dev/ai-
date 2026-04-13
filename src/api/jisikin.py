@@ -5,7 +5,7 @@ import asyncio
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import executor, KEYWORD_DB_ID, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.common import error_response
@@ -236,9 +236,10 @@ async def jisikin_notion_keywords():
             'page_size': 100,
         }
         try:
-            r = req.post('https://api.notion.com/v1/databases/%s/query' % KEYWORD_DB_ID, headers=headers, json=payload, timeout=15)
-            if r.status_code == 200:
-                for page in r.json().get('results', []):
+            from src.services.notion_client import query_database
+            data = query_database(KEYWORD_DB_ID, filter_obj=payload['filter'], page_size=100)
+            if data.get('results'):
+                for page in data.get('results', []):
                     props = page.get('properties', {})
                     title_prop = props.get('키워드', {}).get('title', [])
                     kw = title_prop[0]['text']['content'] if title_prop else ''
@@ -297,8 +298,7 @@ async def jisikin_generate(request: Request):
     keywords = body.get('keywords', [])
     product = body.get('product', {})
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -349,7 +349,7 @@ async def jisikin_generate(request: Request):
         print(f"[jisikin_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'지식인 콘텐츠 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/generate-direct")
@@ -359,8 +359,7 @@ async def jisikin_generate_direct(request: Request):
     questions = body.get('questions', [])
     product = body.get('product', {})
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -388,7 +387,7 @@ async def jisikin_generate_direct(request: Request):
         print(f"[jisikin_generate_direct] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'지식인 직접 답변 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/save-notion")
@@ -427,7 +426,8 @@ async def jisikin_save_notion(request: Request):
     payload['children'] = children[:100]
 
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}

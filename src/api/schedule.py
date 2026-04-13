@@ -33,10 +33,9 @@ def _notion_query_by_date(date_str, channel=None):
         filters.append({'property': '채널', 'select': {'equals': channel}})
     payload = {'filter': {'and': filters}, 'page_size': 100}
     try:
-        r = req.post('https://api.notion.com/v1/databases/%s/query' % CONTENT_DB_ID, headers=headers, json=payload, timeout=15)
-        if r.status_code == 200:
-            return r.json().get('results', [])
-        return []
+        from src.services.notion_client import query_database
+        data = query_database(CONTENT_DB_ID, filter_obj=payload['filter'], page_size=100)
+        return data.get('results', [])
     except Exception:
         return []
 
@@ -63,22 +62,8 @@ def _notion_query_range(start_date, end_date, db_id=None):
         'page_size': 100
     }
     target_db = db_id or CONTENT_DB_ID
-    all_results = []
-    try:
-        r = req.post('https://api.notion.com/v1/databases/%s/query' % target_db, headers=headers, json=payload, timeout=20)
-        if r.status_code == 200:
-            data = r.json()
-            all_results.extend(data.get('results', []))
-            while data.get('has_more'):
-                payload['start_cursor'] = data['next_cursor']
-                r = req.post('https://api.notion.com/v1/databases/%s/query' % target_db, headers=headers, json=payload, timeout=20)
-                if r.status_code != 200:
-                    break
-                data = r.json()
-                all_results.extend(data.get('results', []))
-    except Exception as e:
-        print("[report] query error: %s" % e)
-    return all_results
+    from src.services.notion_client import notion_query_all
+    return notion_query_all(target_db, filter_obj=payload['filter'])
 
 
 def _build_report_data(start, end, results):

@@ -12,7 +12,8 @@ from urllib.parse import quote
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor,
@@ -642,11 +643,10 @@ async def threads_notion_keywords():
         'page_size': 100,
     }
     try:
-        r = req.post('https://api.notion.com/v1/databases/%s/query' % KEYWORD_DB_ID, headers=headers, json=payload, timeout=15)
-        if r.status_code != 200:
-            return {'keywords': []}
+        from src.services.notion_client import query_database
+        data = query_database(KEYWORD_DB_ID, filter_obj=payload['filter'], page_size=100)
         keywords = []
-        for page in r.json().get('results', []):
+        for page in data.get('results', []):
             props = page.get('properties', {})
             t = props.get('키워드', {}).get('title', [])
             kw = t[0]['text']['content'] if t else ''
@@ -673,8 +673,7 @@ async def threads_generate(request: Request):
     acc = next((a for a in data['accounts'] if a['id'] == account_id), None)
     persona = acc.get('persona', {}) if acc else {'tone': '친근'}
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -732,7 +731,7 @@ async def threads_generate(request: Request):
         print(f"[threads_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'쓰레드 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/generate-comment")
@@ -856,8 +855,9 @@ async def threads_save_notion(request: Request):
                     'paragraph': {'rich_text': [{'type': 'text', 'text': {'content': para[k:k+2000]}}]}})
         payload['children'] = children[:100]
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 

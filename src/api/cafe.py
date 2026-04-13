@@ -17,7 +17,8 @@ from docx import Document as DocxDocument
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor, KEYWORD_DB_ID, CONTENT_DB_ID, NOTION_TOKEN, GEMINI_API_KEY, BASE_DIR,
@@ -626,10 +627,8 @@ async def cafe_notion_keywords():
         'page_size': 100,
     }
     try:
-        r = req.post('https://api.notion.com/v1/databases/%s/query' % KEYWORD_DB_ID, headers=headers, json=payload, timeout=15)
-        if r.status_code != 200:
-            return {'keywords': [], 'error': r.text[:300]}
-        data = r.json()
+        from src.services.notion_client import query_database
+        data = query_database(KEYWORD_DB_ID, filter_obj=payload['filter'], page_size=100)
         keywords = []
         for page in data.get('results', []):
             props = page.get('properties', {})
@@ -717,8 +716,7 @@ async def cafe_generate(request: Request):
     product = body.get('product', {})
     settings = body.get('settings', {})
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -849,7 +847,7 @@ async def cafe_generate(request: Request):
         print(f"[cafe_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'카페SEO 원고 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/save-notion")
@@ -904,8 +902,9 @@ async def cafe_save_notion(request: Request):
     payload['children'] = children[:100]
 
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -1075,8 +1074,7 @@ async def cafe_auto_comment(request: Request):
     if len(accounts) < len(comments):
         return JSONResponse({'error': f'계정 부족: 댓글 {len(comments)}개인데 계정 {len(accounts)}개'}, 400)
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -1117,7 +1115,7 @@ async def cafe_auto_comment(request: Request):
         print(f"[cafe_auto_comment] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'댓글 자동 등록 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.get("/comment-history")

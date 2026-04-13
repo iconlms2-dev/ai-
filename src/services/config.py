@@ -31,6 +31,7 @@ REDIRECT_BASE_URL = os.environ.get('REDIRECT_BASE_URL', 'http://localhost:8000')
 
 # ── 파일 경로 ──
 PROGRESS_FILE       = os.path.join(BASE_DIR, "keyword_progress.json")
+EXPAND_PROGRESS_FILE = os.path.join(BASE_DIR, "keyword_expand_progress.json")
 CAFE24_TOKEN_FILE   = os.path.join(BASE_DIR, "cafe24_token.json")
 SHORTS_DIR          = os.path.join(BASE_DIR, "shorts_output")
 THREADS_ACCOUNTS_FILE = os.path.join(BASE_DIR, "threads_accounts.json")

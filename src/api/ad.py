@@ -7,7 +7,8 @@ import time
 
 import requests as req
 from fastapi import APIRouter, Request, UploadFile, File
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from src.services.sse_helper import sse_dict, SSEResponse
 from PIL import Image, ImageDraw, ImageFont
 from selenium.webdriver.common.by import By
 from urllib.parse import quote
@@ -305,8 +306,7 @@ async def ad_crawl_refs(request: Request):
     count = body.get('count', 30)
     advertiser = body.get('advertiser', '')
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -322,7 +322,7 @@ async def ad_crawl_refs(request: Request):
         print(f"[ad_crawl_refs] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'광고 레퍼런스 수집 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.get("/ref-image/{filename}")
@@ -416,8 +416,9 @@ async def ad_save_notion(request: Request):
     props['본문'] = {'rich_text': [{'text': {'content': summary[:2000]}}]}
     payload = {'parent': {'database_id': CONTENT_DB_ID}, 'properties': props}
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props)
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 

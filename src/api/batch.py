@@ -5,7 +5,7 @@ from datetime import datetime
 
 import requests as req
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor, NOTION_TOKEN, CONTENT_DB_ID, KEYWORD_DB_ID,
@@ -42,10 +42,11 @@ def _batch_save_to_notion(channel, keyword, page_id, title, body, account_id='')
                     'paragraph': {'rich_text': [{'type': 'text', 'text': {'content': para[k:k+2000]}}]}})
         payload['children'] = children[:100]
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers_n, json=payload, timeout=15)
-        if r.status_code != 200:
-            print(f"[batch_save_to_notion] 저장 실패 channel={channel} keyword={keyword}: {r.status_code} {r.text[:200]}")
-        return r.status_code == 200
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        if not result['success']:
+            print(f"[batch_save_to_notion] 저장 실패 channel={channel} keyword={keyword}: {result.get('error', '')}")
+        return result['success']
     except Exception as e:
         print(f"[batch_save_to_notion] 저장 에러 channel={channel} keyword={keyword}: {e}")
         return False
@@ -65,11 +66,10 @@ async def batch_keywords():
         'page_size': 100,
     }
     try:
-        r = req.post('https://api.notion.com/v1/databases/%s/query' % KEYWORD_DB_ID, headers=headers, json=payload, timeout=15)
-        if r.status_code != 200:
-            return {'keywords': []}
+        from src.services.notion_client import query_database
+        data = query_database(KEYWORD_DB_ID, filter_obj=payload['filter'], page_size=100)
         keywords = []
-        for page in r.json().get('results', []):
+        for page in data.get('results', []):
             props = page.get('properties', {})
             t = props.get('키워드', {}).get('title', [])
             kw = t[0]['text']['content'] if t else ''
@@ -100,8 +100,7 @@ async def batch_generate(request: Request):
     product = body.get('product', {})
     default_account = body.get('account_id', '')
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -220,4 +219,4 @@ async def batch_generate(request: Request):
         print(f"[batch_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'일괄 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())

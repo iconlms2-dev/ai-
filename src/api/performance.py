@@ -10,7 +10,7 @@ from urllib.parse import quote
 import requests as req
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import (
     executor, BASE_DIR, PERF_DATA_FILE, PERF_SCHEDULE_FILE,
@@ -163,8 +163,7 @@ async def performance_collect(request: Request):
     mode = body.get('mode', 'all')  # all | selected
     selected_items = body.get('items', [])
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -254,7 +253,7 @@ async def performance_collect(request: Request):
         print(f"[performance] collect error: {e}")
         yield _sse({'type': 'error', 'message': f'성과 수집 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.get("/history")

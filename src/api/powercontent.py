@@ -8,7 +8,8 @@ from datetime import datetime
 import requests as req
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
+from src.services.sse_helper import sse_dict, SSEResponse
 
 from src.services.config import executor, BASE_DIR, CONTENT_DB_ID, NOTION_TOKEN
 from src.services.common import error_response
@@ -282,8 +283,7 @@ async def pc_generate(request: Request):
         if m: target_chars = max(2500, int(m.group(1)))
     except (AttributeError, ValueError): pass
 
-    def _sse(obj):
-        return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+    _sse = sse_dict
 
     async def generate():
       try:
@@ -337,7 +337,7 @@ async def pc_generate(request: Request):
         print(f"[powercontent_generate] 에러: {e}")
         yield _sse({'type': 'error', 'message': f'파워컨텐츠 생성 중 오류: {e}'})
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return SSEResponse(generate())
 
 
 @router.post("/docx")
@@ -412,7 +412,8 @@ async def pc_save_notion(request: Request):
             children.append({'object':'block','type':'paragraph','paragraph':{'rich_text':[{'type':'text','text':{'content':para[:2000]}}]}})
         payload['children'] = children
     try:
-        r = req.post('https://api.notion.com/v1/pages', headers=headers, json=payload, timeout=15)
-        return {'success': r.status_code == 200, 'error': '' if r.status_code == 200 else r.text[:300]}
+        from src.services.notion_client import create_page
+        result = create_page(CONTENT_DB_ID, props, children=payload.get('children'))
+        return {'success': result['success'], 'error': result.get('error', '')}
     except Exception as e:
         return {'success': False, 'error': str(e)}
