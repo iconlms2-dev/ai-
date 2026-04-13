@@ -720,6 +720,7 @@ function renderKA(mc) {
         </div>
         <div class="ka-btn-group">
           <button class="ka-btn ka-btn-primary" id="kaExpandBtn" onclick="kaStartExpand()">🚀 키워드 확장 + 검색량 조회</button>
+          <button class="ka-btn ka-btn-secondary ka-hidden" id="kaExpandResumeBtn" onclick="kaStartExpand(true)">🔄 이전 진행 이어하기</button>
           <button class="ka-btn ka-btn-danger ka-hidden" id="kaExpandStopBtn" onclick="kaStopExpand()">⏹ 중지</button>
         </div>
       </div>
@@ -784,6 +785,8 @@ function renderKA(mc) {
       </div>
     </div>
   </div>`;
+  // 이전 확장 진행 확인 → resume 버튼 표시
+  kaCheckExpandProgress();
 }
 
 // ── Tabs ──
@@ -810,13 +813,27 @@ async function kaUploadFile(input) {
 }
 
 // ── STEP 1: Expand + 검색량 ──
-async function kaStartExpand() {
+
+// 페이지 로드 시 이전 확장 진행 확인
+async function kaCheckExpandProgress() {
+  try {
+    const resp = await fetch(API+'/api/keywords/check-expand-progress');
+    const data = await resp.json();
+    if (data.has_progress) {
+      document.getElementById('kaExpandResumeBtn').classList.remove('ka-hidden');
+      document.getElementById('kaExpandResumeBtn').textContent = `🔄 이전 진행 이어하기 (${data.count}개 키워드)`;
+    }
+  } catch(_e) { /* 무시 */ }
+}
+
+async function kaStartExpand(resume = false) {
   const text = document.getElementById('kaKeywords').value.trim();
-  if (!text) return showToast('키워드를 입력하세요');
-  const seeds = text.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (!resume && !text) return showToast('키워드를 입력하세요');
+  const seeds = resume ? [] : text.split('\n').map(s=>s.trim()).filter(Boolean);
   const btn = document.getElementById('kaExpandBtn');
   btn.disabled = true;
   document.getElementById('kaExpandStopBtn').classList.remove('ka-hidden');
+  document.getElementById('kaExpandResumeBtn').classList.add('ka-hidden');
   document.getElementById('kaStep1Result').classList.add('ka-hidden');
   KA.isRunning = true;
   KA.expandAbort = new AbortController();
@@ -827,9 +844,14 @@ async function kaStartExpand() {
   const msg = document.getElementById('kaExpandMsg');
 
   try {
+    const payload = {
+      keywords: seeds,
+      mode: document.querySelector('input[name="kaExpandMode"]:checked').value,
+      resume: resume,
+    };
     const resp = await fetch(API+'/api/keywords/expand', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({keywords: seeds, mode: document.querySelector('input[name="kaExpandMode"]:checked').value}),
+      body: JSON.stringify(payload),
       signal: KA.expandAbort.signal
     });
     const reader = resp.body.getReader();
@@ -845,14 +867,32 @@ async function kaStartExpand() {
       for (const p of parts) {
         if (!p.startsWith('data: ')) continue;
         let ev; try { ev = JSON.parse(p.substring(6)); } catch(_pe) { console.warn('SSE 파싱 에러:', _pe); continue; }
-        if (ev.type === 'error') { console.error('[SSE 에러]', ev.message); showToast(ev.message || '서버 오류가 발생했습니다', 'error'); }
-        if (ev.type === 'progress') {
+
+        if (ev.type === 'error') {
+          console.error('[SSE 에러]', ev.message);
+          showToast(ev.message || '서버 오류가 발생했습니다', 'error');
+        } else if (ev.type === 'warning') {
+          console.warn('[SSE 경고]', ev.msg);
+          // 경고는 프로그레스에 잠깐 표시
+          msg.textContent = `⚠️ ${ev.msg}`;
+        } else if (ev.type === 'progress') {
           msg.textContent = ev.msg;
           if (ev.total > 0) bar.style.width = Math.round(ev.cur/ev.total*100)+'%';
         } else if (ev.type === 'keyword') {
           KA.expandedKeywords.push({keyword: ev.keyword, source: ev.source});
+        } else if (ev.type === 'resume') {
+          msg.textContent = ev.msg || `이전 진행 복구 중 (${ev.count}개)...`;
+        } else if (ev.type === 'saved') {
+          // 중간 저장 알림 — 프로그레스에 잠깐 표시
+          msg.textContent = ev.msg || `중간 저장 (${ev.count}개)`;
+        } else if (ev.type === 'partial_complete') {
+          // 에러 발생했지만 부분 결과 반환
+          KA.expandedKeywords = ev.keywords;
+          msg.textContent = `⚠️ ${ev.msg}`;
+          bar.style.width = '100%';
+          showToast('오류가 발생했지만 수집된 키워드를 반환합니다', 'error');
+          kaShowStep1Result();
         } else if (ev.type === 'complete') {
-          // complete에 검색량 포함된 최종 데이터
           KA.expandedKeywords = ev.keywords;
           msg.textContent = `✅ 완료 — ${ev.total}개 키워드 (검색량 포함)`;
           bar.style.width = '100%';
@@ -864,7 +904,6 @@ async function kaStartExpand() {
     if (e.name === 'AbortError') {
       msg.textContent = `⏹ 중지됨 — ${KA.expandedKeywords.length}개 키워드 수집. 검색량 조회 중...`;
       if (KA.expandedKeywords.length > 0) {
-        // 중지 후 검색량 별도 조회
         try {
           const kwList = KA.expandedKeywords.map(k => k.keyword || k);
           const volResp = await fetch(API+'/api/keywords/search-volume', {
@@ -884,13 +923,15 @@ async function kaStartExpand() {
         kaShowStep1Result();
       }
     } else {
-      showToast('키워드 확장 중 오류: '+e.message);
+      showToast('키워드 확장 중 오류: '+e.message, 'error');
     }
   }
   btn.disabled = false;
   document.getElementById('kaExpandStopBtn').classList.add('ka-hidden');
   KA.isRunning = false;
   KA.expandAbort = null;
+  // 완료 후 resume 버튼 상태 재확인
+  kaCheckExpandProgress();
 }
 
 function kaStopExpand() {

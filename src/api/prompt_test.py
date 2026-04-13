@@ -35,6 +35,7 @@ def _get_default_prompt(channel):
     """채널별 기본 시스템 프롬프트 반환"""
     # 각 채널 모듈에서 프롬프트 빌더를 lazy import
     dummy_product = {'name': '테스트제품', 'brand_keyword': '테스트키워드', 'usp': '핵심특징', 'target': '타겟층', 'ingredients': '성분'}
+    dummy_material = {'product': '테스트제품', 'target': '타겟층', 'problem': '문제', 'emotion': '감정', 'trust': '신뢰근거', 'cta': 'CTA'}
 
     if channel == '블로그_제목':
         from src.api.blog import _build_blog_title_prompt
@@ -120,12 +121,32 @@ def _get_default_prompt(channel):
         from src.api.powercontent import _build_pc_analysis_prompt
         sys_p, _ = _build_pc_analysis_prompt('레퍼런스 본문 텍스트')
         return sys_p
+    elif channel == '숏츠_주제':
+        from src.api.shorts import _build_shorts_topics_prompt
+        sys_p, _ = _build_shorts_topics_prompt(dummy_material, '정보형')
+        return sys_p
+    elif channel == '숏츠_대본':
+        from src.api.shorts import _build_shorts_script_prompt
+        sys_p, _ = _build_shorts_script_prompt(dummy_material, '정보형', '테스트 주제', 500)
+        return sys_p
+    elif channel == '숏츠_후킹':
+        from src.api.shorts import _build_shorts_hooks_prompt
+        return _build_shorts_hooks_prompt()
+    elif channel == '커뮤니티_댓글':
+        from src.api.community import _build_community_comments_prompt
+        sys_p, _ = _build_community_comments_prompt('뽐뿌', '테스트 게시글 본문', '테스트키워드')
+        return sys_p
+    elif channel == '쓰레드_댓글':
+        from src.api.threads import _build_threads_comment_prompt
+        sys_p, _ = _build_threads_comment_prompt('테스트 게시글', {'tone': '친근', 'job': '직장인'})
+        return sys_p
     return ''
 
 
 def _get_full_prompt(channel):
     """채널별 시스템+유저 프롬프트 쌍 반환"""
     dummy_product = {'name': '테스트제품', 'brand_keyword': '테스트키워드', 'usp': '핵심특징', 'target': '타겟층', 'ingredients': '성분'}
+    dummy_material = {'product': '테스트제품', 'target': '타겟층', 'problem': '문제', 'emotion': '감정', 'trust': '신뢰근거', 'cta': 'CTA'}
 
     try:
         if channel == '블로그_제목':
@@ -197,6 +218,23 @@ def _get_full_prompt(channel):
         elif channel == '파워컨텐츠_분석':
             from src.api.powercontent import _build_pc_analysis_prompt
             return _build_pc_analysis_prompt('레퍼런스 본문 텍스트')
+        elif channel == '숏츠_주제':
+            from src.api.shorts import _build_shorts_topics_prompt
+            dummy_material = {'product': '테스트제품', 'target': '타겟층', 'problem': '문제', 'emotion': '감정', 'trust': '신뢰근거', 'cta': 'CTA'}
+            return _build_shorts_topics_prompt(dummy_material, '정보형')
+        elif channel == '숏츠_대본':
+            from src.api.shorts import _build_shorts_script_prompt
+            dummy_material = {'product': '테스트제품', 'target': '타겟층', 'problem': '문제', 'emotion': '감정', 'trust': '신뢰근거', 'cta': 'CTA'}
+            return _build_shorts_script_prompt(dummy_material, '정보형', '테스트 주제', 500)
+        elif channel == '숏츠_후킹':
+            from src.api.shorts import _build_shorts_hooks_prompt
+            return _build_shorts_hooks_prompt(), ''
+        elif channel == '커뮤니티_댓글':
+            from src.api.community import _build_community_comments_prompt
+            return _build_community_comments_prompt('뽐뿌', '테스트 게시글 본문', '테스트키워드')
+        elif channel == '쓰레드_댓글':
+            from src.api.threads import _build_threads_comment_prompt
+            return _build_threads_comment_prompt('테스트 게시글', {'tone': '친근', 'job': '직장인'})
     except Exception as e:
         raise e
     return '', ''
@@ -214,7 +252,9 @@ async def prompt_test_channels():
         '유튜브댓글', '틱톡', '커뮤니티',
         '카페바이럴_일상글', '카페바이럴_고민글', '카페바이럴_침투글',
         '파워컨텐츠_광고소재', '파워컨텐츠_본문', '파워컨텐츠_분석',
-        '쓰레드_일상글', '쓰레드_물길글_셔플', '쓰레드_물길글_연민', '쓰레드_물길글_후기',
+        '쓰레드_일상글', '쓰레드_물길글_셔플', '쓰레드_물길글_연민', '쓰레드_물길글_후기', '쓰레드_댓글',
+        '숏츠_주제', '숏츠_대본', '숏츠_후킹',
+        '커뮤니티_댓글',
     ]
     return {'channels': channels}
 

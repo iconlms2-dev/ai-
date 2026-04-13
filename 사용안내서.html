@@ -181,13 +181,18 @@
     <div class="nav-item" data-target="prog-powercontent" onclick="goTo('prog-powercontent')"><span class="nav-icon">⚡</span> 파워컨텐츠</div>
     <div class="nav-item" data-target="prog-threads" onclick="goTo('prog-threads')"><span class="nav-icon">🧵</span> 쓰레드</div>
     <div class="nav-item" data-target="prog-kwstatus" onclick="goTo('prog-kwstatus')"><span class="nav-icon">📊</span> 키워드 현황</div>
+    <div class="nav-item" data-target="prog-traffic" onclick="goTo('prog-traffic')"><span class="nav-icon">🎯</span> 목표 유입수 계산기</div>
     <div class="nav-item" data-target="prog-photo" onclick="goTo('prog-photo')"><span class="nav-icon">📸</span> 사진 라이브러리</div>
     <div class="nav-item" data-target="prog-ad" onclick="goTo('prog-ad')"><span class="nav-icon">🚀</span> 광고소재 자동화</div>
     <div class="nav-item" data-target="prog-today" onclick="goTo('prog-today')"><span class="nav-icon">📋</span> 오늘 할일</div>
+    <div class="nav-item" data-target="prog-calendar" onclick="goTo('prog-calendar')"><span class="nav-icon">📆</span> 일정 관리</div>
     <div class="nav-item" data-target="prog-inbox" onclick="goTo('prog-inbox')"><span class="nav-icon">📥</span> 작업함</div>
+    <div class="nav-item" data-target="prog-batch" onclick="goTo('prog-batch')"><span class="nav-icon">⚡</span> 일괄 생성</div>
     <div class="nav-item" data-target="prog-perf" onclick="goTo('prog-perf')"><span class="nav-icon">📈</span> 성과 수집</div>
     <div class="nav-item" data-target="prog-schedule" onclick="goTo('prog-schedule')"><span class="nav-icon">📅</span> 배포 일정</div>
+    <div class="nav-item" data-target="prog-scheduler" onclick="goTo('prog-scheduler')"><span class="nav-icon">⏰</span> 스케줄러</div>
     <div class="nav-item" data-target="prog-report" onclick="goTo('prog-report')"><span class="nav-icon">📋</span> 주간 리포트</div>
+    <div class="nav-item" data-target="prog-utm" onclick="goTo('prog-utm')"><span class="nav-icon">🔗</span> UTM 관리</div>
     <div class="nav-item" data-target="prog-review" onclick="goTo('prog-review')"><span class="nav-icon">✅</span> 자동 검수</div>
     <div class="nav-item" data-target="prog-slack" onclick="goTo('prog-slack')"><span class="nav-icon">💬</span> Slack 알림</div>
 
@@ -242,11 +247,16 @@
   <div class="card"><div class="card-icon">💬</div><div class="card-title">커뮤니티 침투</div><div class="card-desc">9개 커뮤니티별 톤에 맞는 침투글 + 자작댓글을 생성합니다.</div></div>
   <div class="card"><div class="card-icon">⚡</div><div class="card-title">파워컨텐츠</div><div class="card-desc">설득형 광고 랜딩페이지 2,500자+를 자동 생성합니다.</div></div>
   <div class="card"><div class="card-icon">📊</div><div class="card-title">키워드 현황</div><div class="card-desc">전체 키워드의 작업상태/노출여부를 한눈에 확인합니다.</div></div>
+  <div class="card"><div class="card-icon">🎯</div><div class="card-title">목표 유입수 계산기</div><div class="card-desc">목표 매출 입력 → 필요 유입수/키워드 수를 자동 산출합니다.</div></div>
   <div class="card"><div class="card-icon">📸</div><div class="card-title">사진 라이브러리</div><div class="card-desc">바이두/샤오홍슈에서 이미지 수집 + 얼굴 모자이크 처리합니다.</div></div>
   <div class="card"><div class="card-icon">🚀</div><div class="card-title">광고소재 자동화</div><div class="card-desc">메타 광고 레퍼런스 수집 + 분석 + 소재 자동 생성합니다.</div></div>
+  <div class="card"><div class="card-icon">📆</div><div class="card-title">일정 관리</div><div class="card-desc">달력에서 이벤트 등록, 기간 목표 설정, 마케팅 일정을 관리합니다.</div></div>
+  <div class="card"><div class="card-icon">⚡</div><div class="card-title">일괄 생성</div><div class="card-desc">여러 키워드 × 여러 채널을 한 번에 일괄 생성 + 자동 저장합니다.</div></div>
   <div class="card"><div class="card-icon">📈</div><div class="card-title">성과 수집</div><div class="card-desc">발행된 콘텐츠의 네이버 검색 노출 여부/순위를 자동 확인합니다.</div></div>
   <div class="card"><div class="card-icon">📅</div><div class="card-title">배포 일정</div><div class="card-desc">오늘/주간 채널별 생산 목표 대비 진행률을 관리합니다.</div></div>
+  <div class="card"><div class="card-icon">⏰</div><div class="card-title">스케줄러</div><div class="card-desc">매일 알림/주간 자동실행을 설정하고 실행 이력을 관리합니다.</div></div>
   <div class="card"><div class="card-icon">📋</div><div class="card-title">주간 리포트</div><div class="card-desc">생산/노출 성과 자동 집계 + AI가 다음 주 액션을 제안합니다.</div></div>
+  <div class="card"><div class="card-icon">🔗</div><div class="card-title">UTM 관리</div><div class="card-desc">UTM 파라미터 생성, 이력 조회, 링크 복사를 관리합니다.</div></div>
 </div>
 
 <h2>서버 실행 방법</h2>
@@ -1279,7 +1289,43 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-photo">17. 사진 라이브러리</h1>
+<h1 id="prog-traffic">17. 목표 유입수 계산기</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">🎯</div>
+  <div class="program-header-info">
+    <div class="program-header-title">목표 유입수 계산기</div>
+    <div class="program-header-meta">사이드바 > 분석 > 목표 유입수 계산기</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 목표 매출에서 역산하여 필요한 유입수, 노출수, 키워드 수를 자동 산출합니다. "얼마나 만들어야 하는지"를 숫자로 알 수 있습니다.</p>
+
+<h3>입력 항목</h3>
+<table>
+  <tr><th style="width:160px">입력</th><th>설명</th></tr>
+  <tr><td>제품명</td><td>산출 대상 제품</td></tr>
+  <tr><td>월 매출 목표 (만원)</td><td>이번 달 달성하고 싶은 매출</td></tr>
+  <tr><td>객단가 (원)</td><td>제품 1개 평균 판매가</td></tr>
+  <tr><td>전환율 (%)</td><td>유입 대비 구매 비율 (기본 2%)</td></tr>
+  <tr><td>CTR (%)</td><td>노출 대비 클릭 비율 (기본 3%)</td></tr>
+</table>
+
+<h3>자동 산출 결과</h3>
+<div class="flow-box">
+  <span class="flow-step">매출목표 ÷ 객단가</span><span class="flow-arrow">=</span>
+  <span class="flow-step">필요 주문수</span><span class="flow-arrow">÷ 전환율 =</span>
+  <span class="flow-step">필요 유입수</span><span class="flow-arrow">÷ CTR =</span>
+  <span class="flow-step">필요 노출수</span><span class="flow-arrow">÷ 4 =</span>
+  <span class="flow-step">주간 필요 노출</span>
+</div>
+
+<div class="tip-box">"+ 제품 추가" 버튼으로 여러 제품을 동시에 관리할 수 있습니다. 입력값은 자동 저장됩니다.</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-photo">18. 사진 라이브러리</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1306,7 +1352,7 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-ad">18. 광고소재 자동화</h1>
+<h1 id="prog-ad">19. 광고소재 자동화</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1337,7 +1383,7 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-perf">19. 성과 수집</h1>
+<h1 id="prog-perf">20. 성과 수집</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1391,7 +1437,7 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-schedule">20. 배포 일정</h1>
+<h1 id="prog-schedule">21. 배포 일정</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1416,21 +1462,36 @@
 
 <div class="tip-box">채널별 일일 목표 개수를 설정할 수 있습니다. 기본값: 블로그 3, 카페 3, 지식인 5, 바이럴 1세트, 커뮤니티 1.</div>
 
-<h4>매출 기반 목표 산출기</h4>
-<p>월 매출 목표에서 역산하여 필요한 노출 수를 자동 계산합니다. 제품별로 입력 가능합니다.</p>
-<table>
-  <tr><th style="width:140px">입력</th><th>설명</th></tr>
-  <tr><td>월 매출 목표 (만원)</td><td>이번 달 달성하고 싶은 매출</td></tr>
-  <tr><td>객단가 (원)</td><td>제품 1개 평균 판매가</td></tr>
-  <tr><td>전환율 (%)</td><td>유입 대비 구매 비율 (기본 2%)</td></tr>
-  <tr><td>CTR (%)</td><td>노출 대비 클릭 비율 (기본 3%)</td></tr>
-</table>
-<p><strong>자동 계산</strong>: 매출목표 ÷ 객단가 = 필요주문 → ÷ 전환율 = 필요유입 → ÷ CTR = 필요노출 → ÷ 4 = 주간 필요노출</p>
-<div class="tip-box">"+ 제품 추가" 버튼으로 여러 제품을 동시에 관리할 수 있습니다. 입력값은 자동 저장됩니다.</div>
+<div class="tip-box">매출 기반 필요 유입수 계산은 <strong>분석 > 목표 유입수 계산기</strong>(17번)에서 별도로 사용할 수 있습니다.</div>
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-report">21. 주간 리포트</h1>
+<h1 id="prog-scheduler">22. 스케줄러</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">⏰</div>
+  <div class="program-header-info">
+    <div class="program-header-title">스케줄러</div>
+    <div class="program-header-meta">사이드바 > 운영 > 스케줄러</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 매일 알림, 주간 자동 실행 등 반복 작업을 설정하고, 실행 이력을 관리합니다.</p>
+
+<h3>주요 기능</h3>
+<ul>
+  <li><strong>매일 알림</strong>: 오늘의 할일 목록을 설정합니다. "오늘 할일" 화면에 표시되는 항목을 여기서 추가/제거합니다.</li>
+  <li><strong>주간 자동 실행</strong>: 요일별로 자동 실행할 작업을 설정합니다. 예: "매주 월요일 블로그 3개 자동 생성".</li>
+  <li><strong>알림 설정</strong>: Slack으로 실행 결과 알림을 보낼지 설정합니다.</li>
+  <li><strong>실행 이력</strong>: 과거 자동 실행 기록을 확인합니다. 성공/실패 여부와 생성된 콘텐츠 수를 볼 수 있습니다.</li>
+</ul>
+
+<div class="tip-box">스케줄러에서 설정한 "매일 할일"이 "오늘 할일" 화면에 자동으로 반영됩니다. 두 기능은 연동되어 있습니다.</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-report">23. 주간 리포트</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1465,7 +1526,31 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-today">22. 오늘 할일</h1>
+<h1 id="prog-utm">24. UTM 관리</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">🔗</div>
+  <div class="program-header-info">
+    <div class="program-header-title">UTM 관리</div>
+    <div class="program-header-meta">사이드바 > 운영 > UTM 관리</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 콘텐츠별 UTM 파라미터를 생성하고 관리합니다. 어떤 채널/캠페인에서 유입이 발생했는지 추적할 수 있습니다.</p>
+
+<h3>주요 기능</h3>
+<ul>
+  <li><strong>UTM 생성</strong>: URL, 소스(source), 매체(medium), 캠페인(campaign)을 입력하면 UTM 파라미터가 붙은 링크를 자동 생성합니다.</li>
+  <li><strong>이력 조회</strong>: 이전에 생성한 UTM 링크 목록을 확인할 수 있습니다.</li>
+  <li><strong>링크 복사</strong>: 생성된 UTM 링크를 클립보드에 바로 복사합니다.</li>
+</ul>
+
+<div class="tip-box">카페SEO, 블로그 등에 삽입할 링크에 UTM을 붙이면 Google Analytics에서 채널별 유입 성과를 정확히 측정할 수 있습니다.</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-today">25. 오늘 할일</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1494,7 +1579,31 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-inbox">23. 작업함</h1>
+<h1 id="prog-calendar">26. 일정 관리</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">📆</div>
+  <div class="program-header-info">
+    <div class="program-header-title">일정 관리</div>
+    <div class="program-header-meta">사이드바 > 일정 > 일정 관리</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 달력 형태로 마케팅 일정을 관리합니다. 이벤트 등록, 기간 목표 설정, 중요 마감일을 한눈에 확인할 수 있습니다.</p>
+
+<h3>주요 기능</h3>
+<ul>
+  <li><strong>달력 보기</strong>: 월/주 단위로 전환 가능. 오늘 날짜가 강조 표시됩니다.</li>
+  <li><strong>이벤트 등록</strong>: 날짜를 클릭하면 이벤트를 추가할 수 있습니다. 제목, 시간, 메모를 입력합니다.</li>
+  <li><strong>기간 목표 설정</strong>: 특정 기간에 대한 생산 목표를 설정하고 추적합니다.</li>
+</ul>
+
+<div class="tip-box">배포 일정과 함께 사용하면 콘텐츠 생산 계획과 마케팅 이벤트를 통합 관리할 수 있습니다.</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-inbox">27. 작업함</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1524,7 +1633,32 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-review">24. 자동 검수</h1>
+<h1 id="prog-batch">28. 일괄 생성</h1>
+<!-- ══════════════════════════════════════════════ -->
+
+<div class="program-header">
+  <div class="program-header-icon">⚡</div>
+  <div class="program-header-info">
+    <div class="program-header-title">일괄 생성</div>
+    <div class="program-header-meta">사이드바 > 운영 > 일괄 생성</div>
+  </div>
+</div>
+
+<p><strong>목적</strong>: 여러 키워드와 여러 채널을 선택해서 한 번에 대량 생성합니다. 생성된 콘텐츠는 자동 검수 후 Notion에 바로 저장됩니다.</p>
+
+<h3>사용 방법</h3>
+<div class="step-list">
+  <div class="step-item"><div class="step-content"><strong>키워드 로드</strong><p>Notion 키워드 DB에서 키워드 목록을 불러옵니다. 상태/채널별로 필터링 가능합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>채널 선택</strong><p>블로그, 카페SEO, 지식인 등 생성할 채널을 선택하고 각 채널별 생성 개수를 지정합니다.</p></div></div>
+  <div class="step-item"><div class="step-content"><strong>일괄 생성 실행</strong><p>"일괄 생성" 버튼을 누르면 선택한 키워드 × 채널 조합으로 자동 생성 + 검수 + Notion 저장이 진행됩니다.</p></div></div>
+</div>
+
+<div class="tip-box">Slack에서도 <code>!배치 블로그 3개 지식인 5개</code> 명령으로 동일하게 일괄 생성할 수 있습니다. 결과는 작업함에 쌓입니다.</div>
+<div class="warn-box">대량 생성 시 AI API 비용이 발생합니다. 한 번에 10개 이하로 시작하여 품질을 확인한 뒤 늘리는 것을 권장합니다.</div>
+
+
+<!-- ══════════════════════════════════════════════ -->
+<h1 id="prog-review">29. 자동 검수</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">
@@ -1577,7 +1711,7 @@
 
 
 <!-- ══════════════════════════════════════════════ -->
-<h1 id="prog-slack">25. Slack 알림</h1>
+<h1 id="prog-slack">30. Slack 알림</h1>
 <!-- ══════════════════════════════════════════════ -->
 
 <div class="program-header">

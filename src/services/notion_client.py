@@ -11,7 +11,7 @@ from datetime import datetime
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
-from src.services.config import NOTION_TOKEN, KEYWORD_DB_ID, PROGRESS_FILE
+from src.services.config import NOTION_TOKEN, KEYWORD_DB_ID, PROGRESS_FILE, EXPAND_PROGRESS_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -182,3 +182,41 @@ def load_progress():
         with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return None
+
+
+def save_expand_progress(all_kws, visited, remaining_seeds, mode, queue=None, round_num=0):
+    """키워드 확장 중간 진행 저장"""
+    try:
+        data = {
+            'all_kws': dict(all_kws),
+            'visited': list(visited),
+            'remaining_seeds': remaining_seeds,
+            'mode': mode,
+            'queue': queue or [],
+            'round_num': round_num,
+            'ts': datetime.now().isoformat(),
+        }
+        with open(EXPAND_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        logger.error("save_expand_progress 저장 실패: %s", e)
+
+
+def load_expand_progress():
+    """키워드 확장 진행 복구"""
+    if os.path.exists(EXPAND_PROGRESS_FILE):
+        try:
+            with open(EXPAND_PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error("load_expand_progress 로드 실패: %s", e)
+    return None
+
+
+def clear_expand_progress():
+    """키워드 확장 진행 파일 삭제"""
+    try:
+        if os.path.exists(EXPAND_PROGRESS_FILE):
+            os.remove(EXPAND_PROGRESS_FILE)
+    except Exception as e:
+        logger.error("clear_expand_progress 삭제 실패: %s", e)
