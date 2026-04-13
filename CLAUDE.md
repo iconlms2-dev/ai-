@@ -46,6 +46,7 @@ Python 파일 수정 후:
 - docs/learning-log.md — 학습 이력 (실수 → 규칙 추가)
 - docs/api-config.md — API 설정
 - .claude/channel-manuals/ — 채널별 매뉴얼
+- .claude/skills/ — 메타 스킬 (blueprint→deep-dive→구현→autoresearch→reflect)
 
 ## Context Utilization Display
 - 모든 응답 끝에 예상 컨텍스트 사용률 표시: `[Context: ~X%]`

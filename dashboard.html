@@ -140,6 +140,161 @@
     .ch-option:hover{background:var(--bg-hover)}
     .ch-option input{accent-color:var(--accent-blue)}
     .ch-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;background:var(--accent-glow);color:var(--accent-blue);margin:1px}
+
+    /* ── Calendar (Google-style) ── */
+    .gcal-container{display:flex;width:100%;max-width:1600px;height:calc(100vh - 120px);margin:0 auto;animation:fadeInUp .4s ease both;text-align:left;gap:0}
+    .gcal-sidebar{width:240px;min-width:240px;padding:0 16px 16px 0;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
+    @media(max-width:1100px){.gcal-sidebar{display:none}.gcal-container{height:auto}}
+    .gcal-create-btn{background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:16px;padding:10px 24px;font-size:14px;font-weight:500;color:var(--text-primary);cursor:pointer;display:flex;align-items:center;gap:10px;font-family:inherit;transition:all var(--transition-fast);box-shadow:0 1px 3px rgba(0,0,0,0.12)}
+    .gcal-create-btn:hover{box-shadow:0 4px 12px rgba(0,0,0,0.2);background:var(--bg-hover)}
+    .gcal-create-btn .plus{font-size:24px;color:var(--accent-blue);font-weight:300;line-height:1}
+    /* Mini calendar */
+    .gcal-mini{user-select:none}
+    .gcal-mini-header{display:flex;align-items:center;justify-content:space-between;padding:4px 0;margin-bottom:4px}
+    .gcal-mini-title{font-size:13px;font-weight:600;color:var(--text-primary)}
+    .gcal-mini-nav{display:flex;gap:2px}
+    .gcal-mini-nav button{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background var(--transition-fast)}
+    .gcal-mini-nav button:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .gcal-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}
+    .gcal-mini-dow{font-size:10px;color:var(--text-muted);padding:4px 0;font-weight:500}
+    .gcal-mini-day{font-size:11px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;color:var(--text-secondary);margin:0 auto;transition:all var(--transition-fast)}
+    .gcal-mini-day:hover{background:var(--bg-hover)}
+    .gcal-mini-day.other{color:var(--text-muted);opacity:.4}
+    .gcal-mini-day.today{background:var(--accent-blue);color:#fff;font-weight:700}
+    .gcal-mini-day.selected{background:var(--accent-glow);color:var(--accent-blue);font-weight:600}
+    .gcal-mini-day.has-event{position:relative}
+    .gcal-mini-day.has-event::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent-blue)}
+    .gcal-mini-day.today.has-event::after{background:#fff}
+    /* Goals */
+    .gcal-goals{background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:14px;flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+    .gcal-goals-tabs{display:flex;gap:0;margin-bottom:10px;border-bottom:1px solid var(--border-color)}
+    .gcal-goals-tab{flex:1;padding:7px 0;text-align:center;font-size:11px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--transition-fast);user-select:none}
+    .gcal-goals-tab:hover{color:var(--text-secondary)}
+    .gcal-goals-tab.active{color:var(--accent-blue);border-bottom-color:var(--accent-blue)}
+    .gcal-goals-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .gcal-goals-label{font-size:13px;font-weight:600;color:var(--text-primary)}
+    .gcal-goals-nav{display:flex;gap:2px}
+    .gcal-goals-nav button{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background var(--transition-fast)}
+    .gcal-goals-nav button:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .gcal-goals-body{flex:1;overflow-y:auto;margin-bottom:6px}
+    .gcal-goal{padding:8px 10px;background:var(--bg-primary);border-left:3px solid var(--accent-purple);border-radius:0 6px 6px 0;margin-bottom:6px;position:relative}
+    .gcal-goal.done-goal{opacity:.5}
+    .gcal-goal-top{display:flex;align-items:flex-start;gap:6px}
+    .gcal-goal-check{accent-color:var(--accent-blue);cursor:pointer;margin-top:1px;flex-shrink:0}
+    .gcal-goal-text{font-size:12px;font-weight:500;color:var(--text-primary);flex:1;word-break:break-word}
+    .gcal-goal-text.struck{text-decoration:line-through;color:var(--text-muted)}
+    .gcal-goal-period{font-size:10px;color:var(--text-muted);margin-top:2px;padding-left:22px}
+    .gcal-goal-del{position:absolute;top:6px;right:6px;color:var(--text-muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity var(--transition-fast)}
+    .gcal-goal:hover .gcal-goal-del{opacity:1}
+    .gcal-goal-del:hover{color:var(--red)}
+    .gcal-goal-empty{font-size:12px;color:var(--text-muted);text-align:center;padding:12px 0}
+    .gcal-goal-add{display:flex;gap:4px;margin-top:auto;padding-top:6px}
+    .gcal-goal-add input{flex:1;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:12px;font-family:inherit}
+    .gcal-goal-add input:focus{outline:none;border-color:var(--accent-blue)}
+    .gcal-goal-add button{background:var(--accent-blue);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;font-weight:500}
+    .gcal-goal-add button:hover{background:#4a6bf0}
+    .gcal-goal-progress{height:3px;background:var(--bg-hover);border-radius:2px;margin:8px 0 4px;overflow:hidden}
+    .gcal-goal-progress-bar{height:100%;background:var(--accent-gradient);border-radius:2px;transition:width .3s ease}
+    .gcal-goal-progress-text{font-size:10px;color:var(--text-muted);text-align:right}
+    /* Main calendar area */
+    .gcal-main{flex:1;display:flex;flex-direction:column;min-width:0}
+    .gcal-toolbar{display:flex;align-items:center;gap:12px;padding:8px 0 12px;flex-shrink:0}
+    .gcal-toolbar-today{padding:6px 16px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:all var(--transition-fast)}
+    .gcal-toolbar-today:hover{background:var(--bg-hover);border-color:var(--accent-blue)}
+    .gcal-toolbar-nav{display:flex;gap:0}
+    .gcal-toolbar-nav button{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background var(--transition-fast)}
+    .gcal-toolbar-nav button:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .gcal-toolbar-title{font-size:20px;font-weight:400;color:var(--text-primary);letter-spacing:-0.3px}
+    .gcal-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+    .gcal-view-toggle{display:flex;border:1px solid var(--border-color);border-radius:6px;overflow:hidden}
+    .gcal-view-btn{padding:5px 14px;font-size:12px;font-weight:500;background:var(--bg-secondary);color:var(--text-secondary);border:none;cursor:pointer;font-family:inherit;transition:all var(--transition-fast)}
+    .gcal-view-btn:not(:last-child){border-right:1px solid var(--border-color)}
+    .gcal-view-btn.active{background:var(--accent-glow);color:var(--accent-blue)}
+    .gcal-view-btn:hover:not(.active){background:var(--bg-hover)}
+    /* Month grid */
+    .gcal-grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);border-left:1px solid var(--border-color);border-top:1px solid var(--border-color);overflow:hidden;border-radius:8px}
+    .gcal-dow{padding:10px 14px;font-size:11.5px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;text-align:right;border-right:1px solid var(--border-color);border-bottom:1px solid var(--border-color);background:var(--bg-secondary)}
+    .gcal-dow.sat{color:var(--accent-blue)}
+    .gcal-dow.sun{color:var(--red)}
+    .gcal-cell{border-right:1px solid var(--border-color);border-bottom:1px solid var(--border-color);padding:4px;cursor:pointer;background:var(--bg-secondary);transition:background var(--transition-fast);display:flex;flex-direction:column;min-height:110px;overflow:hidden}
+    .gcal-cell:hover{background:var(--bg-hover)}
+    .gcal-cell.other{background:var(--bg-primary)}
+    .gcal-cell.other .gcal-date-num{color:var(--text-muted)}
+    .gcal-date-num{font-size:12px;font-weight:500;color:var(--text-secondary);text-align:center;width:28px;height:28px;line-height:28px;border-radius:50%;margin:2px auto 2px;transition:all var(--transition-fast)}
+    .gcal-cell.today .gcal-date-num{background:var(--accent-blue);color:#fff;font-weight:700}
+    .gcal-cell.sun .gcal-date-num{color:var(--red)}
+    .gcal-cell.sat .gcal-date-num{color:var(--accent-blue)}
+    .gcal-cell.other .gcal-date-num{color:var(--text-muted)!important}
+    .gcal-cell-events{flex:1;display:flex;flex-direction:column;gap:1px;overflow:hidden}
+    /* Event chips */
+    .gcal-chip{font-size:11.5px;padding:2px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;line-height:1.6;font-weight:500;transition:opacity var(--transition-fast)}
+    .gcal-chip:hover{opacity:.8}
+    .gcal-chip.done{opacity:.45;text-decoration:line-through}
+    .gcal-chip.color-blue{background:#1a73e8;color:#fff}
+    .gcal-chip.color-cyan{background:#039be5;color:#fff}
+    .gcal-chip.color-green{background:#0b8043;color:#fff}
+    .gcal-chip.color-purple{background:#8e24aa;color:#fff}
+    .gcal-chip.color-red{background:#d50000;color:#fff}
+    .gcal-chip.color-pink{background:#e67c73;color:#fff}
+    .gcal-chip.color-yellow{background:#f6bf26;color:#333}
+    .gcal-chip.color-gray{background:#616161;color:#fff}
+    .gcal-chip.timed{background:transparent;color:var(--text-primary);padding-left:0;display:flex;align-items:center;gap:4px}
+    .gcal-chip.timed .gcal-chip-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .gcal-chip.timed .gcal-chip-dot.color-blue{background:#1a73e8}.gcal-chip.timed .gcal-chip-dot.color-cyan{background:#039be5}.gcal-chip.timed .gcal-chip-dot.color-green{background:#0b8043}.gcal-chip.timed .gcal-chip-dot.color-purple{background:#8e24aa}.gcal-chip.timed .gcal-chip-dot.color-red{background:#d50000}.gcal-chip.timed .gcal-chip-dot.color-pink{background:#e67c73}.gcal-chip.timed .gcal-chip-dot.color-yellow{background:#f6bf26}.gcal-chip.timed .gcal-chip-dot.color-gray{background:#616161}
+    .gcal-more{font-size:10px;color:var(--text-muted);padding:0 6px;cursor:pointer;font-weight:500}
+    .gcal-more:hover{color:var(--accent-blue)}
+    .gcal-cell.drag-sel{background:rgba(91,124,250,0.10)!important}
+    .gcal-cell.drag-sel .gcal-date-num{color:var(--accent-blue)!important}
+    .gcal-multiday{font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;line-height:1.5;font-weight:500;color:#fff;margin-bottom:1px;transition:opacity var(--transition-fast)}
+    .gcal-multiday:hover{opacity:.8}
+    .gcal-multiday.start{border-radius:4px 0 0 4px;margin-right:-4px}
+    .gcal-multiday.mid{border-radius:0;margin-left:-4px;margin-right:-4px}
+    .gcal-multiday.end{border-radius:0 4px 4px 0;margin-left:-4px}
+    .gcal-multiday.single{border-radius:4px}
+    .gcal-multiday.done{opacity:.45;text-decoration:line-through}
+    /* Popover (event detail & create) */
+    .gcal-popover-overlay{position:fixed;inset:0;z-index:999}
+    .gcal-popover{position:fixed;z-index:1000;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.35);min-width:320px;max-width:420px;animation:fadeInUp .2s ease both}
+    .gcal-pop-header{display:flex;align-items:center;justify-content:flex-end;padding:8px 8px 0;gap:4px}
+    .gcal-pop-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);font-size:16px;transition:background var(--transition-fast)}
+    .gcal-pop-icon:hover{background:var(--bg-hover);color:var(--text-primary)}
+    .gcal-pop-body{padding:0 20px 20px}
+    .gcal-pop-title{font-size:18px;font-weight:400;color:var(--text-primary);margin-bottom:8px;word-break:break-word;display:flex;align-items:flex-start;gap:10px}
+    .gcal-pop-title .gcal-chip-dot{margin-top:7px}
+    .gcal-pop-detail{font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .gcal-pop-detail svg{flex-shrink:0}
+    .gcal-pop-desc{font-size:13px;color:var(--text-secondary);margin-top:12px;padding:10px;background:var(--bg-primary);border-radius:8px;white-space:pre-wrap;word-break:break-word}
+    /* Create form */
+    .gcal-form-title{width:100%;border:none;border-bottom:2px solid var(--accent-blue);background:transparent;font-size:20px;font-weight:400;color:var(--text-primary);padding:8px 0;font-family:inherit;outline:none}
+    .gcal-form-title::placeholder{color:var(--text-muted)}
+    .gcal-form-row{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:13px;color:var(--text-secondary)}
+    .gcal-form-row svg{flex-shrink:0;color:var(--text-muted)}
+    .gcal-form-row input,.gcal-form-row select,.gcal-form-row textarea{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:13px;font-family:inherit}
+    .gcal-form-row input:focus,.gcal-form-row select:focus,.gcal-form-row textarea:focus{outline:none;border-color:var(--accent-blue)}
+    .gcal-form-row textarea{width:100%;min-height:60px;resize:vertical}
+    .gcal-form-colors{display:flex;gap:6px;flex-wrap:wrap}
+    .gcal-form-color{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all var(--transition-fast)}
+    .gcal-form-color:hover{transform:scale(1.15)}
+    .gcal-form-color.active{border-color:var(--text-primary);box-shadow:0 0 0 2px var(--bg-secondary)}
+    .gcal-form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+    .gcal-form-save{padding:8px 24px;background:var(--accent-blue);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:background var(--transition-fast)}
+    .gcal-form-save:hover{background:#4a6bf0}
+    .gcal-form-cancel{padding:8px 16px;background:transparent;color:var(--text-secondary);border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit;transition:background var(--transition-fast)}
+    .gcal-form-cancel:hover{background:var(--bg-hover)}
+    /* Week view */
+    .gcal-week-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border-color);border-radius:8px}
+    .gcal-week-header{display:grid;grid-template-columns:56px repeat(7,1fr);border-bottom:1px solid var(--border-color);background:var(--bg-secondary);flex-shrink:0}
+    .gcal-week-header-cell{text-align:center;padding:6px 0 8px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+    .gcal-week-header-cell .wk-date{font-size:22px;font-weight:400;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;margin:2px auto 0}
+    .gcal-week-header-cell .wk-date.today{background:var(--accent-blue);color:#fff;font-weight:500}
+    .gcal-week-body{flex:1;display:grid;grid-template-columns:56px repeat(7,1fr);overflow-y:auto;position:relative}
+    .gcal-week-time{font-size:10px;color:var(--text-muted);text-align:right;padding:0 8px 0 0;height:48px;display:flex;align-items:flex-start;justify-content:flex-end;border-right:1px solid var(--border-color)}
+    .gcal-week-col{border-right:1px solid var(--border-color);position:relative}
+    .gcal-week-col:last-child{border-right:none}
+    .gcal-week-slot{height:48px;border-bottom:1px solid var(--border-color);cursor:pointer;transition:background var(--transition-fast)}
+    .gcal-week-slot:hover{background:var(--bg-hover)}
+    .gcal-week-event{position:absolute;left:2px;right:4px;background:#1a73e8;color:#fff;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:500;overflow:hidden;cursor:pointer;z-index:2;transition:opacity var(--transition-fast)}
+    .gcal-week-event:hover{opacity:.85}
     .theme-toggle{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border-color);cursor:pointer;user-select:none;flex-shrink:0}
     .theme-toggle-track{width:44px;height:24px;background:var(--bg-hover);border-radius:12px;position:relative;transition:background var(--transition-fast)}
     .theme-toggle-thumb{width:20px;height:20px;background:var(--accent-gradient);border-radius:50%;position:absolute;top:2px;left:2px;transition:transform var(--transition-fast);display:flex;align-items:center;justify-content:center;font-size:11px}
@@ -167,6 +322,7 @@
       <div class="nav-item active" data-menu="today" onclick="selectMenu(this)" style="font-weight:600">
         <span class="nav-item-icon">📋</span> 오늘 할일
       </div>
+      <div class="nav-item" data-menu="calendar" onclick="selectMenu(this)"><span class="nav-item-icon">📆</span> 일정 관리</div>
       <div class="nav-divider"></div>
       <!-- 분석 -->
       <div class="nav-category">분석</div>
@@ -422,6 +578,7 @@ const menuData = {
   'utm':{icon:'🔗',title:'UTM 관리',category:'운영',flow:['UTM 생성','이력 조회','링크 복사'],custom:true},
   'keyword-status':{icon:'📊',title:'키워드 현황',category:'분석',flow:['노션 동기화','현황 대시보드','노출 체크'],custom:true},
   'traffic-calc':{icon:'🎯',title:'목표 유입수 계산기',category:'분석',flow:['제품 등록','목표매출 입력','필요 유입수 자동 산출'],custom:true},
+  'calendar':{icon:'📆',title:'일정 관리',category:'일정',flow:['달력 보기','이벤트 등록','기간 목표 설정'],custom:true},
   'manual':{icon:'📖',title:'사용 안내서',category:'도움말',flow:[],custom:true,isManual:true},
 };
 
@@ -473,6 +630,7 @@ function selectMenu(el) {
   if (key === 'performance') { renderPerformance(mc); return; }
   if (key === 'weekly-report') { renderWeeklyReport(mc); return; }
   if (key === 'utm') { renderUtm(mc); return; }
+  if (key === 'calendar') { mc.style.padding='16px 24px'; mc.style.overflow='hidden'; renderCalendar(mc); return; }
   if (key === 'manual') { mc.innerHTML = '<iframe src="/사용안내서.html" style="width:100%;height:100%;border:none;" onload="syncIframeTheme(localStorage.getItem(\'theme\')||\'dark\')"></iframe>'; mc.style.padding='0'; mc.style.overflow='hidden'; return; }
   const flowHTML = data.flow.map((s,i) => `<span class="step">${s}</span>${i<data.flow.length-1?'<span class="arrow">→</span>':''}`).join('');
   mc.innerHTML = `<div class="content-card"><div class="content-icon">${data.icon}</div><div class="content-title">${data.title}</div><div class="content-status"><span class="content-status-dot"></span>준비 중입니다</div><div class="content-desc"><div class="content-desc-flow">${flowHTML}</div></div></div>`;
@@ -7926,6 +8084,531 @@ function tcSaveChannelsNum(totalTraffic) {
   tcRenderChannels(totalTraffic);
 }
 
+
+// ═══════════════════════════ Calendar / 일정 관리 (Google-style) ═══════════════════════════
+function renderCalendar(mc) {
+  const LS_EV = 'cal_events', LS_GL = 'cal_goals';
+  const COLORS = [
+    {id:'blue',hex:'#1a73e8'},{id:'cyan',hex:'#039be5'},{id:'green',hex:'#0b8043'},
+    {id:'purple',hex:'#8e24aa'},{id:'red',hex:'#d50000'},{id:'pink',hex:'#e67c73'},
+    {id:'yellow',hex:'#f6bf26'},{id:'gray',hex:'#616161'}
+  ];
+  const DOW = ['월','화','수','목','금','토','일'];
+  let viewYear, viewMonth, viewMode = 'month', selectedDate, miniYear, miniMonth, editingEvent = null;
+  let dragStart = null, dragEnd = null, isDragging = false, dragDateRange = null; // drag selection state
+
+  // ── Helpers ──
+  function pad(n){return String(n).padStart(2,'0')}
+  function ds(y,m,d){return `${y}-${pad(m+1)}-${pad(d)}`}
+  function today(){const t=new Date();return ds(t.getFullYear(),t.getMonth(),t.getDate())}
+  function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function loadEv(){try{return JSON.parse(localStorage.getItem(LS_EV))||[]}catch(e){return[]}}
+  function saveEv(a){localStorage.setItem(LS_EV,JSON.stringify(a))}
+  function loadGl(){try{return JSON.parse(localStorage.getItem(LS_GL))||[]}catch(e){return[]}}
+  function saveGl(a){localStorage.setItem(LS_GL,JSON.stringify(a))}
+  function fmtTime(t){if(!t)return'';const [h,m]=t.split(':');const hh=parseInt(h);return `${hh===0?12:hh>12?hh-12:hh}:${m} ${hh<12?'오전':'오후'}`}
+  function dayToMon(d){return (d+6)%7} // JS getDay(0=Sun) → Mon-start index (0=Mon..6=Sun)
+  function fmtDateKr(d){const[y,m,dd]=d.split('-');return `${parseInt(m)}월 ${parseInt(dd)}일 (${DOW[dayToMon(new Date(d).getDay())]})`}
+  function getWeekDates(dateStr){const d=new Date(dateStr);const day=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-dayToMon(day));const dates=[];for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);dates.push(ds(dd.getFullYear(),dd.getMonth(),dd.getDate()))}return dates}
+
+  const now=new Date();
+  viewYear=now.getFullYear(); viewMonth=now.getMonth(); miniYear=viewYear; miniMonth=viewMonth; selectedDate=today();
+
+  // ── Layout ──
+  mc.innerHTML = `
+  <div class="gcal-container">
+    <div class="gcal-sidebar">
+      <button class="gcal-create-btn" id="gcalCreateBtn"><span class="plus">+</span> 만들기</button>
+      <div class="gcal-mini" id="gcalMini"></div>
+      <div class="gcal-goals">
+        <div class="gcal-goals-tabs">
+          <div class="gcal-goals-tab active" data-gtab="month">월간</div>
+          <div class="gcal-goals-tab" data-gtab="week">주간</div>
+          <div class="gcal-goals-tab" data-gtab="custom">기간</div>
+        </div>
+        <div class="gcal-goals-header" id="gcalGoalHeader"></div>
+        <div class="gcal-goals-body" id="gcalGoalBody"></div>
+        <div id="gcalGoalAddArea"></div>
+      </div>
+    </div>
+    <div class="gcal-main">
+      <div class="gcal-toolbar">
+        <button class="gcal-toolbar-today" id="gcalToday">오늘</button>
+        <div class="gcal-toolbar-nav">
+          <button id="gcalPrev">&#9664;</button>
+          <button id="gcalNext">&#9654;</button>
+        </div>
+        <div class="gcal-toolbar-title" id="gcalTitle"></div>
+        <div class="gcal-toolbar-right">
+          <div class="gcal-view-toggle">
+            <button class="gcal-view-btn active" data-view="month">월</button>
+            <button class="gcal-view-btn" data-view="week">주</button>
+          </div>
+        </div>
+      </div>
+      <div id="gcalBody"></div>
+    </div>
+  </div>`;
+
+  // ── Mini Calendar ──
+  function buildMini(){
+    const wrap=document.getElementById('gcalMini'); if(!wrap)return;
+    const t=today(), events=loadEv(), eventDates=new Set(events.map(e=>e.date));
+    const first=dayToMon(new Date(miniYear,miniMonth,1).getDay());
+    const dim=new Date(miniYear,miniMonth+1,0).getDate();
+    const prevDim=new Date(miniYear,miniMonth,0).getDate();
+    let h=`<div class="gcal-mini-header"><div class="gcal-mini-title">${miniYear}년 ${miniMonth+1}월</div><div class="gcal-mini-nav"><button data-dir="-1">&#9664;</button><button data-dir="1">&#9654;</button></div></div>`;
+    h+=`<div class="gcal-mini-grid">`;
+    DOW.forEach(d=>{h+=`<div class="gcal-mini-dow">${d}</div>`});
+    for(let i=first-1;i>=0;i--){const d=prevDim-i;const pm=miniMonth===0?11:miniMonth-1;const py=miniMonth===0?miniYear-1:miniYear;const s=ds(py,pm,d);h+=`<div class="gcal-mini-day other${eventDates.has(s)?' has-event':''}" data-date="${s}">${d}</div>`}
+    for(let d=1;d<=dim;d++){const s=ds(miniYear,miniMonth,d);const cls=['gcal-mini-day'];if(s===t)cls.push('today');if(s===selectedDate&&s!==t)cls.push('selected');if(eventDates.has(s))cls.push('has-event');h+=`<div class="${cls.join(' ')}" data-date="${s}">${d}</div>`}
+    const tot=first+dim;const rem=(7-tot%7)%7;
+    for(let d=1;d<=rem;d++){const nm=miniMonth===11?0:miniMonth+1;const ny=miniMonth===11?miniYear+1:miniYear;const s=ds(ny,nm,d);h+=`<div class="gcal-mini-day other${eventDates.has(s)?' has-event':''}" data-date="${s}">${d}</div>`}
+    h+=`</div>`;
+    wrap.innerHTML=h;
+    wrap.querySelectorAll('.gcal-mini-nav button').forEach(b=>{b.onclick=()=>{miniMonth+=parseInt(b.dataset.dir);if(miniMonth<0){miniMonth=11;miniYear--}if(miniMonth>11){miniMonth=0;miniYear++}buildMini()}});
+    wrap.querySelectorAll('.gcal-mini-day:not(.other)').forEach(d=>{d.onclick=()=>{selectedDate=d.dataset.date;const nd=new Date(selectedDate);viewYear=nd.getFullYear();viewMonth=nd.getMonth();render()}});
+  }
+
+  // ── Month View ──
+  function buildMonth(){
+    const body=document.getElementById('gcalBody'); if(!body)return;
+    document.getElementById('gcalTitle').textContent=`${viewYear}년 ${viewMonth+1}월`;
+    const t=today(), events=loadEv();
+    const first=dayToMon(new Date(viewYear,viewMonth,1).getDay());
+    const dim=new Date(viewYear,viewMonth+1,0).getDate();
+    const prevDim=new Date(viewYear,viewMonth,0).getDate();
+    const totalRows=Math.ceil((first+dim)/7);
+
+    let h=`<div class="gcal-grid" style="grid-template-rows:auto repeat(${totalRows},1fr)">`;
+    DOW.forEach((d,i)=>{h+=`<div class="gcal-dow${i===5?' sat':''}${i===6?' sun':''}">${d}</div>`});
+
+    function makeCell(dateStr, day, isOther){
+      const nd=new Date(dateStr);const dow=nd.getDay();
+      const cls=['gcal-cell'];if(isOther)cls.push('other');if(dateStr===t)cls.push('today');if(dow===0)cls.push('sun');if(dow===6)cls.push('sat');
+
+      // multi-day events touching this date
+      const multiEv=events.filter(e=>e.dateEnd&&dateStr>=e.date&&dateStr<=e.dateEnd);
+      // single-day events on this date
+      const singleEv=events.filter(e=>!e.dateEnd&&e.date===dateStr).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));
+
+      const maxShow=4;let shown=0;let evH='';
+
+      // render multi-day bars
+      multiEv.forEach(e=>{
+        if(shown>=maxShow)return; shown++;
+        const col=COLORS.find(c=>c.id===(e.color||'blue'));
+        const isStart=dateStr===e.date, isEnd=dateStr===e.dateEnd;
+        const pos=isStart&&isEnd?'single':isStart?'start':isEnd?'end':'mid';
+        const label=isStart?esc(e.title):(dayToMon(dow)===0?esc(e.title):'');
+        evH+=`<div class="gcal-multiday ${pos}${e.done?' done':''}" data-eid="${e.id}" style="background:${col?.hex||'#1a73e8'}">${label||'&nbsp;'}</div>`;
+      });
+
+      // render single-day events
+      singleEv.forEach(e=>{
+        if(shown>=maxShow)return; shown++;
+        if(e.time){
+          evH+=`<div class="gcal-chip timed${e.done?' done':''}" data-eid="${e.id}"><div class="gcal-chip-dot color-${e.color||'blue'}"></div>${fmtTime(e.time)} ${esc(e.title)}</div>`;
+        } else {
+          evH+=`<div class="gcal-chip color-${e.color||'blue'}${e.done?' done':''}" data-eid="${e.id}">${esc(e.title)}</div>`;
+        }
+      });
+
+      const total=multiEv.length+singleEv.length;
+      if(total>maxShow) evH+=`<div class="gcal-more" data-date="${dateStr}">+${total-maxShow}개 더</div>`;
+      return `<div class="${cls.join(' ')}" data-date="${dateStr}"><div class="gcal-date-num">${day}</div><div class="gcal-cell-events">${evH}</div></div>`;
+    }
+
+    for(let i=first-1;i>=0;i--){const d=prevDim-i;const pm=viewMonth===0?11:viewMonth-1;const py=viewMonth===0?viewYear-1:viewYear;h+=makeCell(ds(py,pm,d),d,true)}
+    for(let d=1;d<=dim;d++) h+=makeCell(ds(viewYear,viewMonth,d),d,false);
+    const tot=first+dim;const rem=(7-tot%7)%7;
+    for(let d=1;d<=rem;d++){const nm=viewMonth===11?0:viewMonth+1;const ny=viewMonth===11?viewYear+1:viewYear;h+=makeCell(ds(ny,nm,d),d,true)}
+    h+=`</div>`;
+    body.innerHTML=h;
+
+    const cells=body.querySelectorAll('.gcal-cell');
+    const cellArr=Array.from(cells);
+
+    // ── Drag selection ──
+    function getDragRange(){
+      if(!dragStart||!dragEnd)return null;
+      const a=dragStart,b=dragEnd;
+      return a<=b?{start:a,end:b}:{start:b,end:a};
+    }
+    function highlightDrag(){
+      const range=getDragRange();
+      cellArr.forEach(c=>{
+        if(range&&c.dataset.date>=range.start&&c.dataset.date<=range.end) c.classList.add('drag-sel');
+        else c.classList.remove('drag-sel');
+      });
+    }
+
+    cells.forEach(c=>{
+      c.addEventListener('mousedown',(ev)=>{
+        if(ev.button!==0||ev.target.closest('.gcal-chip,.gcal-more'))return;
+        isDragging=true; dragStart=c.dataset.date; dragEnd=c.dataset.date;
+        highlightDrag();
+        ev.preventDefault(); // prevent text selection
+      });
+      c.addEventListener('mouseenter',()=>{
+        if(!isDragging)return;
+        dragEnd=c.dataset.date;
+        highlightDrag();
+      });
+    });
+    const onMouseUp=(ev)=>{
+      if(!isDragging)return;
+      isDragging=false;
+      const range=getDragRange();
+      cellArr.forEach(c=>c.classList.remove('drag-sel'));
+      if(!range)return;
+      if(range.start===range.end){
+        // single click
+        selectedDate=range.start;
+        showCreatePop(ev.clientX,ev.clientY);
+      } else {
+        // multi-day drag
+        dragDateRange={start:range.start,end:range.end};
+        selectedDate=range.start;
+        showCreatePop(ev.clientX,ev.clientY);
+      }
+      dragStart=null;dragEnd=null;
+    };
+    body.addEventListener('mouseup',onMouseUp);
+
+    // click chip → detail
+    body.querySelectorAll('.gcal-chip,.gcal-multiday').forEach(c=>{c.onclick=(ev)=>{ev.stopPropagation();showDetailPop(parseInt(c.dataset.eid),ev.clientX,ev.clientY)}});
+    // click more → show all
+    body.querySelectorAll('.gcal-more').forEach(m=>{m.onclick=(ev)=>{ev.stopPropagation();selectedDate=m.dataset.date;showDayListPop(ev.clientX,ev.clientY)}});
+  }
+
+  // ── Week View ──
+  function buildWeek(){
+    const body=document.getElementById('gcalBody'); if(!body)return;
+    const weekDates=getWeekDates(selectedDate);
+    const t=today(), events=loadEv();
+    const startD=new Date(weekDates[0]), endD=new Date(weekDates[6]);
+    const startM=startD.getMonth()+1, endM=endD.getMonth()+1;
+    document.getElementById('gcalTitle').textContent=startM===endM?`${startD.getFullYear()}년 ${startM}월`:`${startD.getFullYear()}년 ${startM}월 – ${endM}월`;
+
+    let h=`<div class="gcal-week-wrap">`;
+    h+=`<div class="gcal-week-header"><div class="gcal-week-header-cell"></div>`;
+    weekDates.forEach((wd,i)=>{const d=parseInt(wd.split('-')[2]);h+=`<div class="gcal-week-header-cell"><div style="color:${i===5?'var(--accent-blue)':i===6?'var(--red)':'var(--text-muted)'}">${DOW[i]}</div><div class="wk-date${wd===t?' today':''}">${d}</div></div>`});
+    h+=`</div><div class="gcal-week-body">`;
+
+    for(let hr=0;hr<24;hr++){
+      h+=`<div class="gcal-week-time">${hr===0?'':hr<12?hr+' AM':hr===12?'12 PM':(hr-12)+' PM'}</div>`;
+      weekDates.forEach(wd=>{h+=`<div class="gcal-week-col"><div class="gcal-week-slot" data-date="${wd}" data-hour="${hr}"></div></div>`});
+    }
+
+    h+=`</div></div>`;
+    body.innerHTML=h;
+
+    // place events
+    weekDates.forEach((wd,col)=>{
+      const dayEv=events.filter(e=>e.date===wd&&e.time);
+      dayEv.forEach(e=>{
+        const [hh,mm]=e.time.split(':').map(Number);
+        const top=hh*48+(mm/60)*48;
+        const dur=e.endTime?((()=>{const[eh,em]=e.endTime.split(':').map(Number);return(eh*60+em)-(hh*60+mm)})()):(60);
+        const height=Math.max((dur/60)*48,20);
+        const colEl=body.querySelectorAll('.gcal-week-col')[col*24+hh]; // not reliable for positioning
+        // use absolute positioning within the week body
+        const parentCols=body.querySelectorAll(`.gcal-week-slot[data-date="${wd}"][data-hour="${hh}"]`);
+        if(parentCols[0]){
+          const wrapper=parentCols[0].parentElement;
+          const evEl=document.createElement('div');
+          evEl.className='gcal-week-event';
+          evEl.style.cssText=`top:${top%48+(mm/60)*0}px;height:${Math.min(height,200)}px;background:${COLORS.find(c=>c.id===(e.color||'blue'))?.hex||'#1a73e8'}`;
+          evEl.textContent=`${fmtTime(e.time)} ${e.title}`;
+          evEl.style.top=`${(mm/60)*48}px`;
+          evEl.style.height=`${Math.min(height,200)}px`;
+          evEl.dataset.eid=e.id;
+          evEl.onclick=(ev)=>{ev.stopPropagation();showDetailPop(e.id,ev.clientX,ev.clientY)};
+          wrapper.style.position='relative';
+          wrapper.appendChild(evEl);
+        }
+      });
+      // allday events
+      const allDay=events.filter(e=>e.date===wd&&!e.time);
+      // show small chips in header area (append to header cell)
+      // skip for simplicity - they show in month view
+    });
+
+    // click slot → create
+    body.querySelectorAll('.gcal-week-slot').forEach(s=>{s.onclick=(ev)=>{
+      selectedDate=s.dataset.date;
+      const hr=parseInt(s.dataset.hour);
+      showCreatePop(ev.clientX,ev.clientY,`${pad(hr)}:00`);
+    }});
+  }
+
+  // ── Popovers ──
+  function closeAllPops(){document.querySelectorAll('.gcal-popover-overlay,.gcal-popover').forEach(e=>e.remove())}
+
+  function positionPop(pop,x,y){
+    document.body.appendChild(pop);
+    const r=pop.getBoundingClientRect();
+    let left=x+12,top=y-r.height/2;
+    if(left+r.width>window.innerWidth-20) left=x-r.width-12;
+    if(top<10) top=10; if(top+r.height>window.innerHeight-10) top=window.innerHeight-r.height-10;
+    pop.style.left=left+'px'; pop.style.top=top+'px';
+  }
+
+  function showCreatePop(x,y,defaultTime){
+    closeAllPops();
+    const rangeMode=!!(dragDateRange&&!editingEvent);
+    const startDate=rangeMode?dragDateRange.start:selectedDate;
+    const endDate=rangeMode?dragDateRange.end:'';
+    dragDateRange=null; // consume
+    const overlay=document.createElement('div');overlay.className='gcal-popover-overlay';
+    overlay.onclick=()=>{dragDateRange=null;closeAllPops()};document.body.appendChild(overlay);
+    const pop=document.createElement('div');pop.className='gcal-popover';
+    pop.innerHTML=`
+      <div class="gcal-pop-header"><div class="gcal-pop-icon" id="gcalPopClose">&times;</div></div>
+      <div class="gcal-pop-body">
+        <input class="gcal-form-title" id="gcalFormTitle" placeholder="제목 추가" autofocus>
+        <div class="gcal-form-row">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="12" height="11" rx="2"/><path d="M3 8h12M7 2v4M11 2v4"/></svg>
+          <input type="date" id="gcalFormDate" value="${startDate}">
+          <span style="color:var(--text-muted)">~</span>
+          <input type="date" id="gcalFormDateEnd" value="${endDate}" title="종료일 (비우면 하루)">
+        </div>
+        <div class="gcal-form-row">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="3"/><path d="M3 16v-1a6 6 0 0112 0v1"/></svg>
+          <input type="time" id="gcalFormTimeStart" value="${defaultTime||''}" placeholder="시작 시간">
+          <span style="color:var(--text-muted)">–</span>
+          <input type="time" id="gcalFormTimeEnd" value="" placeholder="종료 시간">
+        </div>
+        <div class="gcal-form-row">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="9" r="6.5"/></svg>
+          <div class="gcal-form-colors" id="gcalFormColors">
+            ${COLORS.map(c=>`<div class="gcal-form-color${c.id==='blue'?' active':''}" data-color="${c.id}" style="background:${c.hex}"></div>`).join('')}
+          </div>
+        </div>
+        <div class="gcal-form-row" style="align-items:flex-start">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:6px"><path d="M3 5h12M3 9h8M3 13h10"/></svg>
+          <textarea id="gcalFormDesc" placeholder="설명 추가" style="flex:1"></textarea>
+        </div>
+        <div class="gcal-form-actions">
+          <button class="gcal-form-cancel" id="gcalFormCancel">취소</button>
+          <button class="gcal-form-save" id="gcalFormSave">저장</button>
+        </div>
+      </div>`;
+    positionPop(pop,x,y);
+
+    pop.querySelector('#gcalPopClose').onclick=()=>closeAllPops();
+    pop.querySelector('#gcalFormCancel').onclick=()=>closeAllPops();
+    let selColor='blue';
+    pop.querySelectorAll('.gcal-form-color').forEach(c=>{c.onclick=()=>{pop.querySelectorAll('.gcal-form-color').forEach(cc=>cc.classList.remove('active'));c.classList.add('active');selColor=c.dataset.color}});
+
+    // if editing
+    if(editingEvent){
+      const e=editingEvent;
+      pop.querySelector('#gcalFormTitle').value=e.title;
+      pop.querySelector('#gcalFormDate').value=e.date;
+      pop.querySelector('#gcalFormDateEnd').value=e.dateEnd||'';
+      pop.querySelector('#gcalFormTimeStart').value=e.time||'';
+      pop.querySelector('#gcalFormTimeEnd').value=e.endTime||'';
+      pop.querySelector('#gcalFormDesc').value=e.desc||'';
+      selColor=e.color||'blue';
+      pop.querySelectorAll('.gcal-form-color').forEach(cc=>{cc.classList.toggle('active',cc.dataset.color===selColor)});
+      pop.querySelector('#gcalFormSave').textContent='수정';
+    }
+
+    pop.querySelector('#gcalFormSave').onclick=()=>{
+      const title=pop.querySelector('#gcalFormTitle').value.trim();
+      if(!title){pop.querySelector('#gcalFormTitle').style.borderBottomColor='var(--red)';return}
+      const formDate=pop.querySelector('#gcalFormDate').value;
+      const formDateEnd=pop.querySelector('#gcalFormDateEnd').value||'';
+      if(formDateEnd&&formDateEnd<formDate){showToast('종료일이 시작일보다 앞입니다','error');return}
+      const ev={
+        id:editingEvent?editingEvent.id:Date.now(),
+        title,
+        date:formDate,
+        dateEnd:formDateEnd&&formDateEnd!==formDate?formDateEnd:'',
+        time:pop.querySelector('#gcalFormTimeStart').value||'',
+        endTime:pop.querySelector('#gcalFormTimeEnd').value||'',
+        color:selColor,
+        desc:pop.querySelector('#gcalFormDesc').value.trim(),
+        done:editingEvent?editingEvent.done:false
+      };
+      const all=loadEv();
+      if(editingEvent){const idx=all.findIndex(e=>e.id===editingEvent.id);if(idx>=0)all[idx]=ev;editingEvent=null}
+      else all.push(ev);
+      saveEv(all);closeAllPops();render();
+    };
+    pop.querySelector('#gcalFormTitle').onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();pop.querySelector('#gcalFormSave').click()}};
+    setTimeout(()=>pop.querySelector('#gcalFormTitle').focus(),50);
+  }
+
+  function showDetailPop(eid,x,y){
+    closeAllPops();
+    const events=loadEv(), ev=events.find(e=>e.id===eid); if(!ev)return;
+    const overlay=document.createElement('div');overlay.className='gcal-popover-overlay';
+    overlay.onclick=()=>closeAllPops();document.body.appendChild(overlay);
+    const pop=document.createElement('div');pop.className='gcal-popover';
+    const col=COLORS.find(c=>c.id===(ev.color||'blue'));
+    let timeStr='종일';
+    if(ev.time){timeStr=fmtTime(ev.time);if(ev.endTime)timeStr+=' – '+fmtTime(ev.endTime)}
+    pop.innerHTML=`
+      <div class="gcal-pop-header">
+        <div class="gcal-pop-icon" title="수정" id="gcalDetEdit">&#9998;</div>
+        <div class="gcal-pop-icon" title="삭제" id="gcalDetDel">&#128465;</div>
+        <div class="gcal-pop-icon" title="${ev.done?'미완료로':'완료로'}" id="gcalDetDone">${ev.done?'&#8634;':'&#10003;'}</div>
+        <div class="gcal-pop-icon" id="gcalDetClose">&times;</div>
+      </div>
+      <div class="gcal-pop-body">
+        <div class="gcal-pop-title"><div class="gcal-chip-dot" style="width:12px;height:12px;border-radius:50%;background:${col?.hex||'#1a73e8'};flex-shrink:0;margin-top:5px"></div><span style="${ev.done?'text-decoration:line-through;opacity:.5':''}">${esc(ev.title)}</span></div>
+        <div class="gcal-pop-detail">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="10" height="9" rx="1.5"/><path d="M3 7h10M6 2v3M10 2v3"/></svg>
+          ${fmtDateKr(ev.date)}${ev.dateEnd?' ~ '+fmtDateKr(ev.dateEnd):''} &middot; ${timeStr}
+        </div>
+        ${ev.desc?`<div class="gcal-pop-desc">${esc(ev.desc)}</div>`:''}
+      </div>`;
+    positionPop(pop,x,y);
+    pop.querySelector('#gcalDetClose').onclick=()=>closeAllPops();
+    pop.querySelector('#gcalDetDel').onclick=()=>{const all=loadEv();const idx=all.findIndex(e=>e.id===eid);if(idx>=0)all.splice(idx,1);saveEv(all);closeAllPops();render()};
+    pop.querySelector('#gcalDetDone').onclick=()=>{const all=loadEv();const item=all.find(e=>e.id===eid);if(item)item.done=!item.done;saveEv(all);closeAllPops();render()};
+    pop.querySelector('#gcalDetEdit').onclick=()=>{editingEvent=ev;closeAllPops();showCreatePop(x,y)};
+  }
+
+  function showDayListPop(x,y){
+    closeAllPops();
+    const events=loadEv().filter(e=>(e.date===selectedDate)||( e.dateEnd&&selectedDate>=e.date&&selectedDate<=e.dateEnd)).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));
+    const overlay=document.createElement('div');overlay.className='gcal-popover-overlay';
+    overlay.onclick=()=>closeAllPops();document.body.appendChild(overlay);
+    const pop=document.createElement('div');pop.className='gcal-popover';
+    pop.innerHTML=`
+      <div class="gcal-pop-header"><div class="gcal-pop-icon" id="gcalDayClose">&times;</div></div>
+      <div class="gcal-pop-body">
+        <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px">${fmtDateKr(selectedDate)}</div>
+        ${events.map(e=>{const col=COLORS.find(c=>c.id===(e.color||'blue'));return `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer" class="gcal-daylist-item" data-eid="${e.id}">
+            <div style="width:10px;height:10px;border-radius:50%;background:${col?.hex||'#1a73e8'};flex-shrink:0"></div>
+            <span style="font-size:13px;color:var(--text-primary);${e.done?'text-decoration:line-through;opacity:.5':''}">${esc(e.title)}</span>
+            ${e.time?`<span style="font-size:11px;color:var(--text-muted);margin-left:auto">${fmtTime(e.time)}</span>`:''}
+          </div>`}).join('')}
+      </div>`;
+    positionPop(pop,x,y);
+    pop.querySelector('#gcalDayClose').onclick=()=>closeAllPops();
+    pop.querySelectorAll('.gcal-daylist-item').forEach(it=>{it.onclick=(ev)=>{closeAllPops();showDetailPop(parseInt(it.dataset.eid),ev.clientX,ev.clientY)}});
+  }
+
+  // ── Goals (월간/주간/기간) ──
+  const LS_MG='cal_month_goals', LS_WG='cal_week_goals';
+  let goalTab='month', goalMonthY=viewYear, goalMonthM=viewMonth, goalWeekDate=selectedDate;
+  function loadMG(){try{return JSON.parse(localStorage.getItem(LS_MG))||{}}catch(e){return{}}}
+  function saveMG(o){localStorage.setItem(LS_MG,JSON.stringify(o))}
+  function loadWG(){try{return JSON.parse(localStorage.getItem(LS_WG))||{}}catch(e){return{}}}
+  function saveWG(o){localStorage.setItem(LS_WG,JSON.stringify(o))}
+  function monthKey(y,m){return `${y}-${pad(m+1)}`}
+  function weekKey(dateStr){const dates=getWeekDates(dateStr);return dates[0]}
+  function weekLabel(dateStr){const dates=getWeekDates(dateStr);const s=dates[0].split('-'),e=dates[6].split('-');return `${parseInt(s[1])}/${parseInt(s[2])} ~ ${parseInt(e[1])}/${parseInt(e[2])}`}
+
+  function buildGoals(){
+    const header=document.getElementById('gcalGoalHeader');
+    const body=document.getElementById('gcalGoalBody');
+    const addArea=document.getElementById('gcalGoalAddArea');
+    if(!header||!body||!addArea)return;
+
+    if(goalTab==='month'){
+      const key=monthKey(goalMonthY,goalMonthM);
+      const allMG=loadMG();const goals=allMG[key]||[];
+      const done=goals.filter(g=>g.done).length;
+      header.innerHTML=`<div class="gcal-goals-label">${goalMonthY}년 ${goalMonthM+1}월</div><div class="gcal-goals-nav"><button data-gdir="-1">&#9664;</button><button data-gdir="1">&#9654;</button></div>`;
+      let bh='';
+      if(!goals.length) bh=`<div class="gcal-goal-empty">이번 달 목표를 추가하세요</div>`;
+      else {
+        bh+=goals.map((g,i)=>`<div class="gcal-goal${g.done?' done-goal':''}"><div class="gcal-goal-top"><input type="checkbox" class="gcal-goal-check" data-gi="${i}" ${g.done?'checked':''}><div class="gcal-goal-text${g.done?' struck':''}">${esc(g.title)}</div></div><span class="gcal-goal-del" data-gi="${i}">&times;</span></div>`).join('');
+        bh+=`<div class="gcal-goal-progress"><div class="gcal-goal-progress-bar" style="width:${goals.length?Math.round(done/goals.length*100):0}%"></div></div>`;
+        bh+=`<div class="gcal-goal-progress-text">${done}/${goals.length} 완료</div>`;
+      }
+      body.innerHTML=bh;
+      addArea.innerHTML=`<div class="gcal-goal-add"><input id="gcalGInput" placeholder="월간 목표 추가..." maxlength="100"><button id="gcalGAddBtn">+</button></div>`;
+      header.querySelectorAll('.gcal-goals-nav button').forEach(b=>{b.onclick=()=>{goalMonthM+=parseInt(b.dataset.gdir);if(goalMonthM<0){goalMonthM=11;goalMonthY--}if(goalMonthM>11){goalMonthM=0;goalMonthY++}buildGoals()}});
+      body.querySelectorAll('.gcal-goal-check').forEach(cb=>{cb.onchange=()=>{const a=loadMG();const arr=a[key]||[];arr[parseInt(cb.dataset.gi)].done=cb.checked;a[key]=arr;saveMG(a);buildGoals()}});
+      body.querySelectorAll('.gcal-goal-del').forEach(b=>{b.onclick=()=>{const a=loadMG();const arr=a[key]||[];arr.splice(parseInt(b.dataset.gi),1);a[key]=arr;saveMG(a);buildGoals()}});
+      const addBtn=document.getElementById('gcalGAddBtn'),addIn=document.getElementById('gcalGInput');
+      const doAdd=()=>{const t=addIn.value.trim();if(!t)return;const a=loadMG();if(!a[key])a[key]=[];a[key].push({title:t,done:false,id:Date.now()});saveMG(a);addIn.value='';buildGoals()};
+      addBtn.onclick=doAdd; addIn.onkeydown=(e)=>{if(e.key==='Enter')doAdd()};
+
+    } else if(goalTab==='week'){
+      const key=weekKey(goalWeekDate);
+      const allWG=loadWG();const goals=allWG[key]||[];
+      const done=goals.filter(g=>g.done).length;
+      header.innerHTML=`<div class="gcal-goals-label">${weekLabel(goalWeekDate)}</div><div class="gcal-goals-nav"><button data-gdir="-1">&#9664;</button><button data-gdir="1">&#9654;</button></div>`;
+      let bh='';
+      if(!goals.length) bh=`<div class="gcal-goal-empty">이번 주 목표를 추가하세요</div>`;
+      else {
+        bh+=goals.map((g,i)=>`<div class="gcal-goal${g.done?' done-goal':''}"><div class="gcal-goal-top"><input type="checkbox" class="gcal-goal-check" data-gi="${i}" ${g.done?'checked':''}><div class="gcal-goal-text${g.done?' struck':''}">${esc(g.title)}</div></div><span class="gcal-goal-del" data-gi="${i}">&times;</span></div>`).join('');
+        bh+=`<div class="gcal-goal-progress"><div class="gcal-goal-progress-bar" style="width:${goals.length?Math.round(done/goals.length*100):0}%"></div></div>`;
+        bh+=`<div class="gcal-goal-progress-text">${done}/${goals.length} 완료</div>`;
+      }
+      body.innerHTML=bh;
+      addArea.innerHTML=`<div class="gcal-goal-add"><input id="gcalGInput" placeholder="주간 목표 추가..." maxlength="100"><button id="gcalGAddBtn">+</button></div>`;
+      header.querySelectorAll('.gcal-goals-nav button').forEach(b=>{b.onclick=()=>{const d=new Date(goalWeekDate);d.setDate(d.getDate()+(parseInt(b.dataset.gdir)*7));goalWeekDate=ds(d.getFullYear(),d.getMonth(),d.getDate());buildGoals()}});
+      body.querySelectorAll('.gcal-goal-check').forEach(cb=>{cb.onchange=()=>{const a=loadWG();const arr=a[key]||[];arr[parseInt(cb.dataset.gi)].done=cb.checked;a[key]=arr;saveWG(a);buildGoals()}});
+      body.querySelectorAll('.gcal-goal-del').forEach(b=>{b.onclick=()=>{const a=loadWG();const arr=a[key]||[];arr.splice(parseInt(b.dataset.gi),1);a[key]=arr;saveWG(a);buildGoals()}});
+      const addBtn=document.getElementById('gcalGAddBtn'),addIn=document.getElementById('gcalGInput');
+      const doAdd=()=>{const t=addIn.value.trim();if(!t)return;const a=loadWG();if(!a[key])a[key]=[];a[key].push({title:t,done:false,id:Date.now()});saveWG(a);addIn.value='';buildGoals()};
+      addBtn.onclick=doAdd; addIn.onkeydown=(e)=>{if(e.key==='Enter')doAdd()};
+
+    } else { // custom
+      const goals=loadGl();
+      header.innerHTML=`<div class="gcal-goals-label">기간 목표</div>`;
+      let bh='';
+      if(!goals.length) bh=`<div class="gcal-goal-empty">기간 목표를 추가하세요</div>`;
+      else bh=goals.map((g,i)=>`<div class="gcal-goal"><div class="gcal-goal-top"><input type="checkbox" class="gcal-goal-check" data-gi="${i}" ${g.done?'checked':''}><div class="gcal-goal-text${g.done?' struck':''}">${esc(g.title)}</div></div><div class="gcal-goal-period">${fmtDateKr(g.start)} ~ ${fmtDateKr(g.end)}</div><span class="gcal-goal-del" data-gi="${i}">&times;</span></div>`).join('');
+      body.innerHTML=bh;
+      addArea.innerHTML=`<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px"><input id="gcalGInput" placeholder="기간 목표 추가..." maxlength="100" style="width:100%;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;color:var(--text-primary);font-size:12px;font-family:inherit"><div style="display:flex;gap:4px;align-items:center"><input type="date" id="gcalGStart" style="flex:1;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 6px;color:var(--text-primary);font-size:11px;font-family:inherit"><span style="color:var(--text-muted);font-size:11px">~</span><input type="date" id="gcalGEnd" style="flex:1;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 6px;color:var(--text-primary);font-size:11px;font-family:inherit"><button id="gcalGAddBtn" style="background:var(--accent-blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+</button></div></div>`;
+      const gStart=document.getElementById('gcalGStart'),gEnd=document.getElementById('gcalGEnd');
+      if(gStart)gStart.value=today();
+      if(gEnd){const nw=new Date();nw.setDate(nw.getDate()+14);gEnd.value=ds(nw.getFullYear(),nw.getMonth(),nw.getDate())}
+      body.querySelectorAll('.gcal-goal-check').forEach(cb=>{cb.onchange=()=>{const all=loadGl();all[parseInt(cb.dataset.gi)].done=cb.checked;saveGl(all);buildGoals()}});
+      body.querySelectorAll('.gcal-goal-del').forEach(b=>{b.onclick=()=>{const all=loadGl();all.splice(parseInt(b.dataset.gi),1);saveGl(all);buildGoals()}});
+      document.getElementById('gcalGAddBtn').onclick=()=>{
+        const ti=document.getElementById('gcalGInput'),sv=gStart?.value,ev=gEnd?.value,title=ti.value.trim();
+        if(!title||!sv||!ev){showToast('목표, 시작일, 종료일 모두 입력해주세요','error');return}
+        if(sv>ev){showToast('종료일이 시작일보다 앞입니다','error');return}
+        const all=loadGl();all.push({title,start:sv,end:ev,done:false,id:Date.now()});saveGl(all);ti.value='';buildGoals();
+      };
+      document.getElementById('gcalGInput').onkeydown=(e)=>{if(e.key==='Enter')document.getElementById('gcalGAddBtn').click()};
+    }
+  }
+
+  // Tab switching
+  document.querySelectorAll('.gcal-goals-tab').forEach(t=>{t.onclick=()=>{document.querySelectorAll('.gcal-goals-tab').forEach(tt=>tt.classList.remove('active'));t.classList.add('active');goalTab=t.dataset.gtab;goalMonthY=viewYear;goalMonthM=viewMonth;goalWeekDate=selectedDate;buildGoals()}});
+
+  // ── Render ──
+  function render(){
+    if(viewMode==='month') buildMonth(); else buildWeek();
+    miniYear=viewYear; miniMonth=viewMonth; buildMini(); buildGoals();
+  }
+
+  // ── Toolbar ──
+  document.getElementById('gcalToday').onclick=()=>{const n=new Date();viewYear=n.getFullYear();viewMonth=n.getMonth();selectedDate=today();render()};
+  document.getElementById('gcalPrev').onclick=()=>{if(viewMode==='month'){viewMonth--;if(viewMonth<0){viewMonth=11;viewYear--}}else{const d=new Date(selectedDate);d.setDate(d.getDate()-7);selectedDate=ds(d.getFullYear(),d.getMonth(),d.getDate());viewYear=d.getFullYear();viewMonth=d.getMonth()}render()};
+  document.getElementById('gcalNext').onclick=()=>{if(viewMode==='month'){viewMonth++;if(viewMonth>11){viewMonth=0;viewYear++}}else{const d=new Date(selectedDate);d.setDate(d.getDate()+7);selectedDate=ds(d.getFullYear(),d.getMonth(),d.getDate());viewYear=d.getFullYear();viewMonth=d.getMonth()}render()};
+  document.querySelectorAll('.gcal-view-btn').forEach(b=>{b.onclick=()=>{document.querySelectorAll('.gcal-view-btn').forEach(bb=>bb.classList.remove('active'));b.classList.add('active');viewMode=b.dataset.view;render()}});
+  document.getElementById('gcalCreateBtn').onclick=(ev)=>{selectedDate=selectedDate||today();showCreatePop(ev.clientX+20,ev.clientY+20)};
+
+  // Keyboard shortcuts
+  const handleKey=(e)=>{
+    if(document.querySelector('.gcal-popover'))return;
+    if(!document.getElementById('gcalBody'))return;
+    if(e.key==='t'||e.key==='T'){document.getElementById('gcalToday').click()}
+    if(e.key==='ArrowLeft'){document.getElementById('gcalPrev').click()}
+    if(e.key==='ArrowRight'){document.getElementById('gcalNext').click()}
+    if(e.key==='m'||e.key==='M'){viewMode='month';document.querySelectorAll('.gcal-view-btn').forEach(b=>{b.classList.toggle('active',b.dataset.view==='month')});render()}
+    if(e.key==='w'||e.key==='W'){viewMode='week';document.querySelectorAll('.gcal-view-btn').forEach(b=>{b.classList.toggle('active',b.dataset.view==='week')});render()}
+  };
+  document.addEventListener('keydown',handleKey);
+  // cleanup on menu change (store ref to remove later)
+  const origSelect=selectMenu;
+
+  render();
+}
 
 </script>
 </body>
