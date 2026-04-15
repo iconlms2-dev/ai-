@@ -156,7 +156,7 @@ const STRUCTURE = [
     ]
   },
   {
-    section: '카페SEO',
+    section: '카페 외부',
     icon: '☕',
     file: 'src/api/cafe.py',
     lines: 793,
@@ -167,7 +167,7 @@ const STRUCTURE = [
     ]
   },
   {
-    section: '카페바이럴',
+    section: '카페 내부',
     icon: '🔥',
     file: 'src/api/viral.py',
     lines: 327,
@@ -194,7 +194,7 @@ const STRUCTURE = [
     file: 'src/api/youtube.py',
     lines: 879,
     prompts: [
-      { channel: '유튜브댓글', label: '댓글 3종 세트', icon: '💬' },
+      { channel: '유튜브댓글', label: '댓글 생성', icon: '💬' },
     ]
   },
   {
@@ -329,10 +329,6 @@ function renderPrompt(channel) {
         <button class="copy-btn" onclick="copyCurrentTab()">📋 복사</button>
       </div>
 
-      <button class="copy-claude-btn" onclick="copyCombinedForClaude()">
-        📋 시크릿 채팅용 프롬프트 복사 (더미 데이터)
-      </button>
-
       <div style="margin-top:24px;padding:20px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
         <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--accent)">🚀 실제 데이터로 프롬프트 생성 (시크릿 채팅용)</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:12px">크롤링+분석+제목까지 서버에서 수행. 시크릿 채팅에 붙여넣어 테스트하세요.</div>
@@ -344,11 +340,55 @@ function renderPrompt(channel) {
           <input id="bpProdTarget" placeholder="타겟층" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
           <input id="bpBrandKw" placeholder="나만의 키워드" style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
         </div>
-        <button onclick="buildRealPrompt()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" id="bpBtn">🚀 프롬프트 생성 (크롤링+제목 포함)</button>
+        <div style="margin-bottom:8px;display:none;" id="bpTitleRow">
+          <input id="bpTitle" placeholder="제목 (claude.ai에서 생성한 제목을 여기에 입력 → 본문 프롬프트에 반영)" style="width:100%;padding:8px;background:var(--bg);border:1px solid #f59e0b;border-radius:6px;color:var(--text);font-size:13px">
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="buildRealPrompt('single')" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" id="bpBtn">🚀 이 프롬프트만 생성</button>
+          <button onclick="buildRealPrompt('all')" style="padding:8px 20px;background:#22c55e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" id="bpBtnAll">📦 전체 사이클 생성</button>
+        </div>
         <div id="bpResult" style="margin-top:12px"></div>
+      </div>
+
+      <div style="margin-top:24px;padding:20px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:#f59e0b">✅ 결과물 체크 (본문 붙여넣기 → 자동 검증)</div>
+        <textarea id="outputCheck" placeholder="claude.ai에서 생성된 본문을 여기에 붙여넣으세요" style="width:100%;height:150px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;resize:vertical;margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input id="checkKeyword" placeholder="키워드" style="flex:1;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="checkTargetChar" placeholder="목표 글자수" type="number" style="width:120px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="checkTargetKw" placeholder="목표 키워드수" type="number" style="width:120px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+          <input id="checkTargetPhoto" placeholder="목표 사진수" type="number" style="width:120px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+        </div>
+        <button onclick="runOutputCheck()" style="padding:8px 20px;background:#f59e0b;color:#000;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">✅ 체크</button>
+        <div id="checkResult" style="margin-top:12px"></div>
       </div>
     </div>
   `;
+
+  // 채널에 따라 제목 입력란 + 버튼 텍스트 동적 처리
+  setTimeout(() => {
+    const titleRow = document.getElementById('bpTitleRow');
+    const btnSingle = document.getElementById('bpBtn');
+    const ch = channel || '';
+    const isTitle = ch.includes('제목') || ch.includes('변환') || ch.includes('질문제목');
+    const isBody = ch.includes('본문') || ch.includes('질문본문');
+    const isComments = ch.includes('댓글');
+    const isReplies = ch.includes('답글');
+    const isAnswers = ch.includes('답변');
+
+    // 제목 프롬프트면 제목 입력란 숨김
+    if (titleRow) titleRow.style.display = isTitle ? 'none' : 'block';
+
+    // 버튼 텍스트 동적 변경
+    if (btnSingle) {
+      if (isTitle) btnSingle.textContent = '🚀 제목 프롬프트 생성';
+      else if (isBody) btnSingle.textContent = '🚀 본문 프롬프트 생성';
+      else if (isComments) btnSingle.textContent = '🚀 댓글 프롬프트 생성';
+      else if (isReplies) btnSingle.textContent = '🚀 답글 프롬프트 생성';
+      else if (isAnswers) btnSingle.textContent = '🚀 답변 프롬프트 생성';
+      else btnSingle.textContent = '🚀 이 프롬프트만 생성';
+    }
+  }, 0);
 }
 
 function getTabContent(data) {
@@ -409,7 +449,8 @@ function escHtml(str) {
 
 // ── 실제 데이터로 프롬프트 생성 ──
 
-async function buildRealPrompt() {
+async function buildRealPrompt(mode) {
+  // mode: 'single' = 현재 선택된 프롬프트만, 'all' = 전체 사이클
   const keyword = document.getElementById('bpKeyword')?.value?.trim();
   if (!keyword) return alert('키워드를 입력하세요');
   const product = {
@@ -422,15 +463,16 @@ async function buildRealPrompt() {
 
   // 현재 채널에 따라 API 분기
   const ch = currentChannel || '';
+  const userTitle = document.getElementById('bpTitle')?.value?.trim() || '';
   let apiChannel = '';
   let bodyData = {};
 
   if (ch.startsWith('블로그')) {
     apiChannel = 'blog';
-    bodyData = { keywords: [{keyword, stage: '3_정보습득'}], product };
+    bodyData = { keywords: [{keyword, stage: '3_정보습득'}], product, user_title: userTitle };
   } else if (ch.startsWith('카페SEO')) {
     apiChannel = 'cafe';
-    bodyData = { keywords: [{keyword}], urls: [], product, settings: {} };
+    bodyData = { keywords: [{keyword}], urls: [], product, settings: {}, user_title: userTitle };
   } else if (ch.startsWith('파워컨텐츠')) {
     apiChannel = 'powercontent';
     bodyData = { keyword, stage: '3_정보습득', appeal: '', buying_thing: '', deficit_level: '-4', product, analysis: '' };
@@ -449,9 +491,11 @@ async function buildRealPrompt() {
   }
 
   const btn = document.getElementById('bpBtn');
-  btn.disabled = true;
-  btn.textContent = '생성 중... (크롤링+제목 포함, 최대 30초)';
-  document.getElementById('bpResult').innerHTML = '<div style="color:var(--text3);font-size:12px">서버에서 크롤링+분석+제목 생성 중...</div>';
+  const btnAll = document.getElementById('bpBtnAll');
+  btn.disabled = true; btnAll.disabled = true;
+  btn.textContent = '생성 중...';
+  btnAll.textContent = '생성 중...';
+  document.getElementById('bpResult').innerHTML = '<div style="color:var(--text3);font-size:12px">서버에서 크롤링+분석 중... (최대 30초)</div>';
 
   try {
     const resp = await fetch('/api/' + apiChannel + '/build-prompt', {
@@ -460,26 +504,62 @@ async function buildRealPrompt() {
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
 
-    // 결과에서 combined 추출
-    let prompts = [];
+    // 결과에서 combined 추출 — 현재 선택된 채널에 따라 필터링
+    let allPrompts = [];
     if (data.results) {
       data.results.forEach(r => {
-        if (r.title) prompts.push({label: '생성된 제목', text: r.title, copyable: false});
-        if (r.q_title) prompts.push({label: '생성된 질문 제목', text: r.q_title, copyable: false});
-        if (r.q_body) prompts.push({label: '생성된 질문 본문', text: r.q_body, copyable: false});
-        if (r.analysis) prompts.push({label: '상위글 분석', text: '사진 '+r.analysis.photo_count+'장, 키워드 '+r.analysis.keyword_repeat+'회, 글자수 '+r.analysis.char_count+'자', copyable: false});
-        if (r.body_prompt) prompts.push({label: '본문 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.body_prompt.system_prompt, r.body_prompt.user_prompt), copyable: true});
-        if (r.comments_prompt) prompts.push({label: '댓글 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.comments_prompt.system_prompt, r.comments_prompt.user_prompt), copyable: true});
-        if (r.answers_prompt) prompts.push({label: '답변 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.answers_prompt.system_prompt, r.answers_prompt.user_prompt), copyable: true});
-        if (r.post_prompt) prompts.push({label: '침투글 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(r.post_prompt.system_prompt, r.post_prompt.user_prompt), copyable: true});
+        if (r.analysis) allPrompts.push({label: '상위글 분석', text: '사진 '+r.analysis.photo_count+'장, 키워드 '+r.analysis.keyword_repeat+'회, 글자수 '+r.analysis.char_count+'자', copyable: false, type: 'analysis'});
+        if (r.crawled) {
+          let crawlText = '';
+          if (r.crawled.articles && r.crawled.articles.length) {
+            r.crawled.articles.forEach((a,i) => {
+              crawlText += `${i+1}. ${a.url}\n   글자수: ${a.char_count}자 | 사진: ${a.photo_count}장 | 키워드: ${a.keyword_repeat}회\n`;
+            });
+            const avg = Math.round(r.crawled.articles.reduce((s,a) => s+a.char_count, 0) / r.crawled.articles.length);
+            crawlText += `\n평균: ${avg}자 → 기준: ${Math.floor(avg*0.9)}~${Math.ceil(avg*1.1)}자 (±10%)`;
+          }
+          if (r.crawled.top_titles && r.crawled.top_titles.length) {
+            crawlText += '\n\n상위글 제목:\n' + r.crawled.top_titles.map((t,i) => (i+1)+'. '+t).join('\n');
+          }
+          if (crawlText) allPrompts.push({label: '크롤링 결과', text: crawlText.trim(), copyable: false, type: 'crawled'});
+        }
+        if (r.title_prompt) allPrompts.push({label: '제목 프롬프트', text: wrapForSecretChat(r.title_prompt.system_prompt, r.title_prompt.user_prompt), copyable: true, type: 'title'});
+        if (r.body_prompt) allPrompts.push({label: '본문 프롬프트', text: wrapForSecretChat(r.body_prompt.system_prompt, r.body_prompt.user_prompt), copyable: true, type: 'body'});
+        if (r.comments_prompt) allPrompts.push({label: '댓글 프롬프트', text: wrapForSecretChat(r.comments_prompt.system_prompt, r.comments_prompt.user_prompt), copyable: true, type: 'comments'});
+        if (r.replies_prompt) allPrompts.push({label: '답글 프롬프트', text: wrapForSecretChat(r.replies_prompt.system_prompt, r.replies_prompt.user_prompt), copyable: true, type: 'replies'});
+        if (r.answers_prompt) allPrompts.push({label: '답변 프롬프트', text: wrapForSecretChat(r.answers_prompt.system_prompt, r.answers_prompt.user_prompt), copyable: true, type: 'answers'});
+        if (r.post_prompt) allPrompts.push({label: '침투글 프롬프트', text: wrapForSecretChat(r.post_prompt.system_prompt, r.post_prompt.user_prompt), copyable: true, type: 'post'});
       });
     } else if (data.steps) {
-      data.steps.forEach(s => prompts.push({label: s.name + ' (시크릿 채팅용)', text: wrapForSecretChat(s.system_prompt, s.user_prompt != null ? s.user_prompt : s.combined), copyable: true}));
+      data.steps.forEach(s => allPrompts.push({label: s.name, text: wrapForSecretChat(s.system_prompt, s.user_prompt != null ? s.user_prompt : s.combined), copyable: true, type: 'step'}));
     } else if (data.body_prompt) {
-      if (data.ad_title) prompts.push({label: '생성된 광고 제목', text: data.ad_title, copyable: false});
-      if (data.ad_desc) prompts.push({label: '생성된 광고 설명', text: data.ad_desc, copyable: false});
-      prompts.push({label: '본문 프롬프트 (시크릿 채팅용)', text: wrapForSecretChat(data.body_prompt.system_prompt, data.body_prompt.user_prompt), copyable: true});
+      if (data.ad_title) allPrompts.push({label: '생성된 광고 제목', text: data.ad_title, copyable: false, type: 'ad'});
+      if (data.ad_desc) allPrompts.push({label: '생성된 광고 설명', text: data.ad_desc, copyable: false, type: 'ad'});
+      allPrompts.push({label: '본문 프롬프트', text: wrapForSecretChat(data.body_prompt.system_prompt, data.body_prompt.user_prompt), copyable: true, type: 'body'});
     }
+
+    // mode에 따라 필터링 — crawled(크롤링 원문)는 항상 포함
+    let prompts = allPrompts;
+    if (mode === 'single') {
+      // 현재 선택된 채널에 해당하는 프롬프트만 + 크롤링 원문은 항상 표시
+      if (ch.includes('질문제목')) {
+        prompts = allPrompts.filter(p => p.type === 'analysis' || p.type === 'title' || p.type === 'crawled');
+      } else if (ch.includes('질문본문')) {
+        prompts = allPrompts.filter(p => p.type === 'body' || p.type === 'crawled');
+      } else if (ch.includes('제목') || ch.includes('변환')) {
+        prompts = allPrompts.filter(p => p.type === 'analysis' || p.type === 'title' || p.type === 'crawled');
+      } else if (ch.includes('본문')) {
+        prompts = allPrompts.filter(p => p.type === 'analysis' || p.type === 'body' || p.type === 'crawled');
+      } else if (ch.includes('답글')) {
+        prompts = allPrompts.filter(p => p.type === 'replies' || p.type === 'crawled');
+      } else if (ch.includes('댓글')) {
+        prompts = allPrompts.filter(p => p.type === 'comments' || p.type === 'crawled');
+      } else if (ch.includes('답변')) {
+        prompts = allPrompts.filter(p => p.type === 'answers' || p.type === 'crawled');
+      }
+      if (prompts.length === 0) prompts = allPrompts;
+    }
+    // mode === 'all' 이면 allPrompts 그대로 사용
 
     let html = '';
     prompts.forEach((p, i) => {
@@ -490,8 +570,10 @@ async function buildRealPrompt() {
       html += '</div>';
       if (p.copyable) {
         html += '<textarea id="bpText'+i+'" readonly style="width:100%;height:100px;font-size:11px;font-family:monospace;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:8px;color:var(--text);resize:vertical">' + escHtml(p.text) + '</textarea>';
+      } else if (p.type === 'crawled') {
+        html += '<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;background:var(--bg2);padding:8px;border-radius:4px">' + escHtml(p.text) + '</div>';
       } else {
-        html += '<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;max-height:60px;overflow-y:auto">' + escHtml(p.text) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text2);white-space:pre-wrap">' + escHtml(p.text) + '</div>';
       }
       html += '</div>';
     });
@@ -499,8 +581,28 @@ async function buildRealPrompt() {
   } catch(e) {
     document.getElementById('bpResult').innerHTML = '<div style="color:var(--red);font-size:13px">실패: ' + escHtml(e.message) + '</div>';
   }
-  btn.disabled = false;
-  btn.textContent = '🚀 프롬프트 생성 (크롤링+제목 포함)';
+  btn.disabled = false; btnAll.disabled = false;
+  btn.textContent = '🚀 이 프롬프트만 생성';
+  btnAll.textContent = '📦 전체 사이클 생성 (제목+본문+댓글)';
+}
+
+function bpShowAll() {
+  const prompts = window._allPrompts || [];
+  let html = '';
+  prompts.forEach((p, i) => {
+    html += '<div style="margin-bottom:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html += '<strong style="font-size:13px;color:' + (p.copyable ? 'var(--green)' : 'var(--blue)') + '">' + escHtml(p.label) + '</strong>';
+    if (p.copyable) html += '<button onclick="bpCopy('+i+')" style="padding:4px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">📋 복사</button>';
+    html += '</div>';
+    if (p.copyable) {
+      html += '<textarea id="bpText'+i+'" readonly style="width:100%;height:100px;font-size:11px;font-family:monospace;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:8px;color:var(--text);resize:vertical">' + escHtml(p.text) + '</textarea>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;max-height:60px;overflow-y:auto">' + escHtml(p.text) + '</div>';
+    }
+    html += '</div>';
+  });
+  document.getElementById('bpResult').innerHTML = html;
 }
 
 function bpCopy(idx) {
@@ -509,6 +611,99 @@ function bpCopy(idx) {
   navigator.clipboard.writeText(ta.value).then(() => {
     alert('복사 완료! claude.ai 시크릿 채팅에 붙여넣기 하세요.');
   }).catch(() => { ta.select(); document.execCommand('copy'); });
+}
+
+function toggleCrawl(idx) {
+  var el = document.getElementById('bpCrawl' + idx);
+  var btn = document.getElementById('bpCrawlBtn' + idx);
+  if (!el || !btn) return;
+  if (el.getAttribute('data-collapsed') === '1') {
+    el.style.maxHeight = 'none';
+    el.style.overflow = 'auto';
+    el.setAttribute('data-collapsed', '0');
+    btn.textContent = '▲ 접기';
+  } else {
+    el.style.maxHeight = '80px';
+    el.style.overflow = 'hidden';
+    el.setAttribute('data-collapsed', '1');
+    btn.textContent = '▼ 펼치기';
+  }
+}
+
+function runOutputCheck() {
+  const text = document.getElementById('outputCheck').value.trim();
+  if (!text) { alert('본문을 붙여넣으세요'); return; }
+
+  const keyword = document.getElementById('checkKeyword').value.trim();
+  const targetChar = parseInt(document.getElementById('checkTargetChar').value) || 0;
+  const targetKw = parseInt(document.getElementById('checkTargetKw').value) || 0;
+  const targetPhoto = parseInt(document.getElementById('checkTargetPhoto').value) || 0;
+
+  const results = [];
+
+  // 1. 글자수 (공백 포함)
+  const charCount = text.length;
+  const charNoSpace = text.replace(/\s/g, '').length;
+  if (targetChar > 0) {
+    const min = Math.floor(targetChar * 0.9);
+    const max = Math.ceil(targetChar * 1.1);
+    const ok = charCount >= min && charCount <= max;
+    results.push({label: '글자수 (공백포함)', value: `${charCount}자`, target: `${min}~${max}자 (평균 ${targetChar}의 ±10%)`, pass: ok});
+  } else {
+    results.push({label: '글자수 (공백포함)', value: `${charCount}자`, target: '-', pass: null});
+  }
+  results.push({label: '글자수 (공백제외)', value: `${charNoSpace}자`, target: '-', pass: null});
+
+  // 2. 키워드 반복수
+  if (keyword) {
+    const kwCount = (text.match(new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')) || []).length;
+    const kwOk = targetKw > 0 ? kwCount >= targetKw : null;
+    results.push({label: `키워드 "${keyword}"`, value: `${kwCount}회`, target: targetKw > 0 ? `${targetKw}회` : '-', pass: kwOk});
+  }
+
+  // 3. 사진/이미지 태그 수
+  const imgTags = (text.match(/\[이미지\d*\]|\[사진\d*\]/gi) || []).length;
+  const photoOk = targetPhoto > 0 ? imgTags >= targetPhoto : null;
+  results.push({label: '이미지 태그', value: `${imgTags}개`, target: targetPhoto > 0 ? `${targetPhoto}개` : '-', pass: photoOk});
+
+  // 4. 문단 수
+  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim()).length;
+  results.push({label: '문단 수', value: `${paragraphs}개`, target: '8개 이상', pass: paragraphs >= 8});
+
+  // 5. [링크] 태그
+  const hasLink = text.includes('[링크]');
+  results.push({label: '[링크] 태그', value: hasLink ? '있음' : '없음', target: '있어야 함', pass: hasLink});
+
+  // 6. 장 관련 키워드 체크
+  const gutWords = ['장 건강', '장건강', '장내', '장 환경', '장 상태', '장에 도움', '장이 개선', '흡수 효율', '흡수율'];
+  const foundGut = gutWords.filter(w => text.includes(w));
+  results.push({label: '장 관련 서술', value: foundGut.length > 0 ? `발견: ${foundGut.join(', ')}` : '없음 ✓', target: '없어야 함', pass: foundGut.length === 0});
+
+  // 7. 광고성 표현 체크
+  const adWords = ['대박', '강추', '꼭 사세요', '인생템', '완전 강추', '효과 보장', '완치'];
+  const foundAd = adWords.filter(w => text.includes(w));
+  results.push({label: '광고성 표현', value: foundAd.length > 0 ? `발견: ${foundAd.join(', ')}` : '없음 ✓', target: '없어야 함', pass: foundAd.length === 0});
+
+  // 렌더링
+  let html = '<table style="width:100%;font-size:13px;border-collapse:collapse;">';
+  html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:6px;">항목</th><th style="text-align:left;padding:6px;">결과</th><th style="text-align:left;padding:6px;">기준</th><th style="text-align:center;padding:6px;">판정</th></tr>';
+  results.forEach(r => {
+    const icon = r.pass === true ? '✅' : r.pass === false ? '❌' : '➖';
+    const color = r.pass === true ? '#22c55e' : r.pass === false ? '#ef4444' : 'var(--text2)';
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px;color:var(--text)">${r.label}</td>
+      <td style="padding:6px;color:${color};font-weight:600">${r.value}</td>
+      <td style="padding:6px;color:var(--text2)">${r.target}</td>
+      <td style="padding:6px;text-align:center;font-size:16px">${icon}</td>
+    </tr>`;
+  });
+  html += '</table>';
+
+  const passCount = results.filter(r => r.pass === true).length;
+  const failCount = results.filter(r => r.pass === false).length;
+  html += `<div style="margin-top:8px;font-size:13px;font-weight:600;color:${failCount > 0 ? '#ef4444' : '#22c55e'}">✅ ${passCount}개 통과 / ❌ ${failCount}개 실패</div>`;
+
+  document.getElementById('checkResult').innerHTML = html;
 }
 
 // 초기화

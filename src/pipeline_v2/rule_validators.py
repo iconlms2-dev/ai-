@@ -93,6 +93,13 @@ def validate_blog(title: str, body: str, keyword: str,
     if not has_photo:
         errors.append("[사진] 또는 [이미지] 태그 없음")
 
+    # 장(腸) 관련 서술 차단
+    gut_words = ['장 건강', '장건강', '장내', '장 환경', '장 상태', '장에 도움', '장이 개선', '흡수 효율', '흡수율이']
+    for gw in gut_words:
+        if gw in body:
+            errors.append(f"장 관련 서술 발견: '{gw}' — 성분→효과를 장 경유로 설명하면 안 됨")
+            break
+
     # SEO 분석 (warnings → errors에 추가)
     seo = analyze_seo(body, keyword, title)
     errors.extend(f"[SEO] {w}" for w in seo.warnings)

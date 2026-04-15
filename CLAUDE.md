@@ -77,11 +77,6 @@ Python 파일 수정 후:
 - .claude/channel-manuals/ — 채널별 매뉴얼
 - .claude/skills/ — 메타 스킬 (blueprint→deep-dive→구현→autoresearch→reflect)
 
-## Context Utilization Display
-- 모든 응답 끝에 예상 컨텍스트 사용률 표시: `[Context: ~X%]`
-- `/context` 명령어의 실제 토큰 수치를 기준으로 추정. 감으로 부풀리지 않는다.
-- 장시간 작업(멀티스텝 도구 체인, 백그라운드 처리) 중 5% 임계값을 넘을 때마다 인라인 마일스톤 표시: `─── Context milestone: ~X% ───`
-
 ## 최근 학습 (전체: docs/learning-log.md)
 | 날짜 | 실수 | 규칙 |
 |------|------|------|

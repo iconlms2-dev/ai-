@@ -81,36 +81,60 @@ def _analyze_cafe_article(url, keyword):
 
 
 def _analyze_top_for_cafe(keyword):
-    """카페 상위글 3개 분석 → 평균 사진수, 키워드반복수, 글자수"""
+    """카페 탭에서 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}
     try:
         r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=article", headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
+
+        # 상위글 제목+URL 수집 (최대 5개)
+        top_titles = []
         urls = []
-        for a in soup.find_all('a', href=re.compile(r'cafe\.naver\.com.*ArticleRead')):
+        seen_articles = set()
+        for a in soup.find_all('a', href=lambda h: h and 'cafe.naver.com' in h):
             href = a.get('href', '')
-            if href not in urls:
-                urls.append(href)
-            if len(urls) >= 3:
-                break
+            text = a.get_text(strip=True)
+            # RE(댓글) 제외, 원글만
+            if text.startswith('RE'):
+                continue
+            # 글 번호가 포함된 URL만 (카페명/숫자 패턴)
+            article_match = re.search(r'cafe\.naver\.com/[^/]+/(\d+)', href)
+            if not article_match:
+                continue
+            article_id = article_match.group(1)
+            if article_id in seen_articles:
+                continue
+            # 제목처럼 보이는 텍스트만 (10자 이상)
+            if text and len(text) > 10:
+                seen_articles.add(article_id)
+                top_titles.append(text)
+                urls.append(href.split('?')[0])  # ?art= 파라미터 제거
+                if len(top_titles) >= 5:
+                    break
+
         if not urls:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500, 'top_titles': []}
+
         results = []
+        articles = []  # 개별 글 상세 정보
         for url in urls[:3]:
             a = _analyze_cafe_article(url, keyword)
             if a:
                 results.append(a)
+                articles.append({'url': url, 'char_count': a['char_count'], 'photo_count': a['photo_count'], 'keyword_repeat': a['keyword_repeat']})
             time.sleep(0.5)
         if not results:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500, 'top_titles': top_titles, 'articles': []}
         return {
             'photo_count': max(round(sum(r['photo_count'] for r in results) / len(results)), 3),
             'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
-            'char_count': max(round(sum(r['char_count'] for r in results) / len(results)), 800)
+            'char_count': max(round(sum(r['char_count'] for r in results) / len(results)), 800),
+            'top_titles': top_titles,
+            'articles': articles,
         }
     except Exception as e:
         print(f"[_analyze_top_for_cafe] 오류: {e}")
-        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
+        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500, 'top_titles': []}
 
 
 # ── 크롤링 ──
@@ -310,7 +334,7 @@ def _create_cafe_docx(title, body_text, image_paths, keyword):
 
 # ── 프롬프트 빌더 ──
 
-def _build_cafe_title_prompt(keyword, original_title):
+def _build_cafe_title_prompt(keyword, original_title, top_titles=None):
     system = """📌 역할:
 너는 네이버 카페 상위노출을 위한 제목 리라이팅 전문가야.
 
@@ -342,10 +366,14 @@ def _build_cafe_title_prompt(keyword, original_title):
 - 출력은 제목 1줄만
 - 불필요한 부가 문구 없이 제공
 - 예시: 입력 "다이어트 자전거 도움되나요?" → 출력 "다이어트 자전거 효과 있나요?\""""
+    titles_text = ''
+    if top_titles:
+        titles_text = '\n[카페 탭 상위 노출 제목들 — 톤과 패턴 참고용]\n' + '\n'.join(f'- {t}' for t in top_titles[:5])
+
     if original_title:
-        user = "- 기존 제목: %s\n- 메인 키워드: %s → 제목에 그대로 유지" % (original_title, keyword)
+        user = "- 기존 제목: %s\n- 메인 키워드: %s → 제목에 그대로 유지%s" % (original_title, keyword, titles_text)
     else:
-        user = "- 기존 제목: (없음 - 새로 생성)\n- 메인 키워드: %s → 제목에 그대로 유지" % keyword
+        user = "- 기존 제목: (없음 - 새로 생성)\n- 메인 키워드: %s → 제목에 그대로 유지%s" % (keyword, titles_text)
     return system, user
 
 
@@ -358,21 +386,24 @@ def _build_cafe_body_prompt(keyword, title, original_body, settings, product):
     ref_text = original_body if original_body else '(없음 - 새로 생성)'
 
     system = """📌 역할:
-너는 네이버 카페 상위노출 기준에 맞춰, 결핍 고민과 증상을 얘기하고 질문형식의 글을 작성하는 카피라이터야.
+너는 네이버 카페에 고민을 털어놓는 실제 사용자야.
+제품 후기를 쓰는 게 아니라, 진짜 힘든 상황을 호소하면서 댓글로 도움을 구하는 글을 써.
 
-광고처럼 보이면 안 되고, 누구나 메인 키워드에 맞는 증상을 공감할 수 있는 글을 써서 오래 글을 읽을 수 있게 써야 해.
+⚠️ 핵심: 이 글은 "고민글"이지 "후기글"이 아니야.
+- 본문에서 특정 제품명, 성분명, 효과 체험을 절대 언급하지 마.
+- 제품/해결책은 댓글에서 다른 사람들이 알려주는 구조야.
+- 글쓴이는 아직 해결 못 한 사람이야.
 
 [본문 구조]
-1. 오프닝 (결핍) — 증상과 문제 얘기, 공감 유도. 개인 고민, 문제 인식.
-   예: "요즘 살이 안 빠져서 너무 스트레스예요ㅠㅠ 식단도 해보고 운동도 해봤는데 그대로예요."
-2. 시도 (실패 경험) — 기존 해결 방법과 한계.
-   예: "한약, 디톡스 주스, 카페인 다이어트 등 여러 방법 다 해봤는데 금방 요요가 오더라구요."
-3. 전환 (대안 등장) — 새로운 제품/방법 선택과 고민.
-   예: "그래서 이번엔 다이어트 영양제 쪽으로 알아봤어요. 식욕 억제보다는 체지방 대사를 돕는 쪽으로요."
-4. 결과 (변화 체감) — 구체적인 후기.
-   예: "2주 정도 먹었는데 붓기가 빠지고 피로도 덜 느껴지더라구요."
-5. 마무리 (질문형 문장) — 사용자 참여 유도.
-   예: "혹시 다이어트 영양제 꾸준히 먹어보신 분 계신가요?"
+1. 인사 + 고민 꺼내기 — "안녕하세요 ~~ 관련해서 질문 드리려고 합니다"
+2. 내 상황 설명 — 나이, 직업, 생활패턴 등 구체적 페르소나 + 증상 호소
+   예: "요즘 컨디션이 너무 안좋아져서 스트레스가 심해요ㅠㅠ"
+3. 이것저것 알아본 경험 — 병원, 약, 다른 방법 알아봤지만 부담/걱정
+   예: "팔팔정가격 알아보다가 생각보다 부담스러워서 고민되더라고요.."
+4. 현재 막막한 심정 — 근본적 해결이 필요한데 뭘 해야 할지 모르겠음
+   예: "일시적으로 좋아지는 건 의미 없잖아요. 근본적으로 개선되는 방법이 필요한데 그게 쉽지가 않네요ㅠ"
+5. 도움 요청 — 경험담 공유 부탁
+   예: "혹시 건강한 방식으로 좋아지신 분 계신가요??"
 
 [키워드 규칙]
 - 메인 키워드: 지정된 반복횟수 +1회 본문에 삽입
@@ -384,23 +415,28 @@ def _build_cafe_body_prompt(keyword, title, original_body, settings, product):
 - 문단과 문단 사이 또는 문장 중간에 어색하지 않게 [어울릴 사진] 삽입이라고 표기
 - 어떤 이미지를 넣으면 좋을지 짧은 설명도 함께 작성
 - 사진 수: 지정된 수 +1개 삽입
-- 사진 유형: 손 위 제품 컷, 섭취 모습, 체중계, 생활 배경 등 실사용자 느낌
-- 제품명 확대 촬영, 홍보용 배너 이미지 금지
+- 사진 유형: 고민하는 모습, 병원/약국 관련, 검색하는 모습 등 고민 상황에 맞는 사진
+- 제품 촬영 컷, 홍보용 배너 이미지 금지
 - 예시:
-  - [어울릴 사진: 운동 후 다이어트 영양제와 물컵이 함께 있는 컷]
-  - [어울릴 사진: 체중계 수치 변화 사진]
-  - [어울릴 사진: 아침 공복에 영양제 섭취하는 장면]
+  - [어울릴 사진: 소파에 앉아 고민하는 중년 남성의 일상 컷]
+  - [어울릴 사진: 스마트폰으로 건강 정보를 검색하는 모습]
 
 [문체 규칙]
-- 줄바꿈은 3~5줄 간격
-- 자연스러운 후기·질문 톤, 진솔한 체험 공유 느낌
-- 광고 어투 금지: "강추", "인생템", "꼭 사세요", "효과 최고!", "무조건 됩니다!" 등
-- 후기형·질문형·체험형 톤 유지 (명령형 X)
-- 본문 중간중간 질문형 문장을 넣어 체류시간 확보
+- 줄바꿈은 2~4줄 간격. 빈 줄로 문단 구분.
+- 실제 카페에 고민 올리는 사람의 말투. 존댓말 기반이지만 편한 톤.
+- 이모티콘(ㅠㅠ, ㅜㅜ, .., ??) 자연스럽게 사용
+- 광고 어투 절대 금지
+- 제품 추천, 성분 설명, 효과 체험 서술 금지 — 이건 댓글에서 할 일
 
 [출력 규칙]
 - 출력 시 제목 없이 바로 본문만
-- 글자 수: 지정된 글자수 ±100자 (공백 제외)"""
+- 글자 수: 지정된 글자수 ±100자 (공백 제외)
+
+🚫 절대 금지:
+- 본문에서 특정 제품명 언급
+- 본문에서 "이걸 먹어봤는데", "효과가 있었다" 식의 후기 서술
+- 본문에서 특정 성분 효능 설명
+- 해시태그 사용"""
 
     user = """- 제목: %s
 - 참고 경쟁사글 (없다면 무시하고 새로 작성): %s
@@ -643,12 +679,13 @@ async def cafe_notion_keywords():
 
 @router.post("/build-prompt")
 async def cafe_build_prompt(request: Request):
-    """카페SEO 프롬프트만 생성 (크롤링+제목까지 서버, 본문/댓글은 claude.ai용)"""
+    """카페SEO 프롬프트만 생성 (크롤링+분석, 본문/댓글은 claude.ai용)"""
     body = await request.json()
     keywords = body.get('keywords', [])
     urls = body.get('urls', [])
     product = body.get('product', {})
     settings = body.get('settings', {})
+    user_title = body.get('user_title', '')
     loop = asyncio.get_running_loop()
     results = []
     url_list = [u.strip() for u in urls if u.strip()] if urls else []
@@ -678,10 +715,10 @@ async def cafe_build_prompt(request: Request):
                 original_title = crawled['title'] or found['title']
                 original_body = crawled['body']
 
-        # 제목 생성 (API)
-        sys1, usr1 = _build_cafe_title_prompt(kw, original_title)
-        title = await loop.run_in_executor(executor, call_claude, sys1, usr1)
-        title = title.strip().split('\n')[0].strip()
+        # 제목 프롬프트 조립 (API 호출 X — claude.ai에서 직접 테스트)
+        sys1, usr1 = _build_cafe_title_prompt(kw, original_title, top_titles=cafe_analysis.get('top_titles', []))
+        combined_title = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys1}\n\n---\n\n{usr1}"
+        title = user_title if user_title else '(제목란에 입력하세요)'
 
         # 본문 프롬프트 조립
         sys2, usr2 = _build_cafe_body_prompt(kw, title, original_body, kw_settings, product)
@@ -699,6 +736,8 @@ async def cafe_build_prompt(request: Request):
             'keyword': kw,
             'title': title,
             'analysis': {'photo_count': kw_settings['photo_count'], 'keyword_repeat': kw_settings['repeat_count'], 'char_count': kw_settings['char_target']},
+            'crawled': {'top_titles': cafe_analysis.get('top_titles', []), 'original_title': original_title, 'original_body': original_body[:2000], 'articles': cafe_analysis.get('articles', [])},
+            'title_prompt': {'system_prompt': sys1, 'user_prompt': usr1, 'combined': combined_title},
             'body_prompt': {'system_prompt': sys2, 'user_prompt': usr2, 'combined': combined_body},
             'comments_prompt': {'system_prompt': sys3, 'user_prompt': usr3, 'combined': combined_comments},
             'replies_prompt': {'system_prompt': sys4, 'user_prompt': usr4, 'combined': combined_replies},
@@ -737,6 +776,7 @@ async def cafe_generate(request: Request):
             kw_settings['photo_count'] = cafe_analysis['photo_count']
             kw_settings['repeat_count'] = cafe_analysis['keyword_repeat']
             kw_settings['char_target'] = cafe_analysis['char_count']
+            kw_settings['top_titles'] = cafe_analysis.get('top_titles', [])
 
             # 경쟁사 글 크롤링 (URL 직접 입력 or 자동 검색)
             if url:
@@ -756,7 +796,7 @@ async def cafe_generate(request: Request):
 
             # STEP 1: 제목
             yield _sse({'type': 'progress', 'msg': '[%d/%d] %s — 제목 생성 중...' % (i+1, total, kw), 'cur': i, 'total': total})
-            sys1, usr1 = _build_cafe_title_prompt(kw, original_title)
+            sys1, usr1 = _build_cafe_title_prompt(kw, original_title, top_titles=kw_settings.get('top_titles', []))
             title = await loop.run_in_executor(executor, call_claude, sys1, usr1)
             title = title.strip().split('\n')[0].strip()
 

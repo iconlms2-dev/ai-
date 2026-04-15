@@ -339,8 +339,8 @@
       <!-- 콘텐츠 생산 -->
       <div class="nav-category">콘텐츠 생산</div>
       <div class="nav-item" data-menu="blog" onclick="selectMenu(this)"><span class="nav-item-icon">📝</span> 블로그 원고</div>
-      <div class="nav-item" data-menu="cafe-seo" onclick="selectMenu(this)"><span class="nav-item-icon">☕</span> 카페SEO 원고</div>
-      <div class="nav-item" data-menu="cafe-viral" onclick="selectMenu(this)"><span class="nav-item-icon">🔥</span> 카페바이럴</div>
+      <div class="nav-item" data-menu="cafe-seo" onclick="selectMenu(this)"><span class="nav-item-icon">☕</span> 카페 외부 원고</div>
+      <div class="nav-item" data-menu="cafe-viral" onclick="selectMenu(this)"><span class="nav-item-icon">🔥</span> 카페 내부</div>
       <div class="nav-item" data-menu="jisikin" onclick="selectMenu(this)"><span class="nav-item-icon">❓</span> 지식인</div>
       <div class="nav-item" data-menu="youtube" onclick="selectMenu(this)"><span class="nav-item-icon">▶️</span> 유튜브댓글</div>
       <div class="nav-item" data-menu="tiktok" onclick="selectMenu(this)"><span class="nav-item-icon">🎵</span> 틱톡 스크립트</div>
@@ -608,8 +608,8 @@ async function streamSSE(url, options, onEvent, onError, onComplete) {
 const menuData = {
   'keyword-analysis': {icon:'🔍',title:'키워드 분석',category:'분석',flow:['키워드 입력','키워드 확장','검색량+경쟁강도+뷰탭 분석'],custom:true},
   'blog':{icon:'📝',title:'블로그 원고',category:'콘텐츠 생산',flow:['키워드/URL 입력','상위글 분석','블로그 본문+제목+이미지 자동 생성'],custom:true},
-  'cafe-seo':{icon:'☕',title:'카페SEO 원고',category:'콘텐츠 생산',flow:['상위글 크롤링+분석','제목→본문→댓글+답글','사진 매칭','Polish(금칙어+치환)','검수→노션 저장'],custom:true},
-  'cafe-viral':{icon:'🔥',title:'카페바이럴',category:'콘텐츠 생산',flow:['일상글','대화침투','제품인지+댓글'],custom:true},
+  'cafe-seo':{icon:'☕',title:'카페 외부 원고',category:'콘텐츠 생산',flow:['상위글 크롤링+분석','제목→본문→댓글+답글','사진 매칭','Polish(금칙어+치환)','검수→노션 저장'],custom:true},
+  'cafe-viral':{icon:'🔥',title:'카페 내부',category:'콘텐츠 생산',flow:['일상글','대화침투','제품인지+댓글'],custom:true},
   'jisikin':{icon:'❓',title:'지식인',category:'콘텐츠 생산',flow:['키워드 입력','질문제목+질문본문','답변 2개 세트 생성'],custom:true},
   'youtube':{icon:'▶️',title:'유튜브댓글',category:'콘텐츠 생산',flow:['영상 URL','스크립트 추출','바이럴 댓글 생성'],custom:true},
   'tiktok':{icon:'🎵',title:'틱톡 스크립트',category:'콘텐츠 생산',flow:['키워드 입력','15~30초 숏폼 스크립트','연출메모 생성'],custom:true},
@@ -1555,7 +1555,7 @@ function renderCafe(mc) {
   const prod = JSON.parse(localStorage.getItem('blogProduct') || '{}');
   mc.innerHTML = `
   <div class="ka-wrap">
-    <div class="ka-title">☕ 카페SEO 원고</div>
+    <div class="ka-title">☕ 카페 외부 원고</div>
 
     <!-- 키워드 입력 -->
     <div class="ka-section">
@@ -1669,7 +1669,7 @@ async function cafeFetchNotion() {
     CAFE.notionKeywords = d.keywords;
     const list = document.getElementById('cafeNotionList');
     if (!d.keywords.length) {
-      list.innerHTML = '<p style="color:var(--text-muted)">키워드 현황에서 "카페SEO"로 배정된 미사용 키워드가 없습니다. 키워드 현황 페이지에서 채널을 먼저 배정해주세요.</p>';
+      list.innerHTML = '<p style="color:var(--text-muted)">키워드 현황에서 "카페 외부"로 배정된 미사용 키워드가 없습니다. 키워드 현황 페이지에서 채널을 먼저 배정해주세요.</p>';
     } else {
       list.innerHTML = d.keywords.map((k,i) => `
         <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">
@@ -1939,7 +1939,7 @@ async function cafeAutoCommentStart() {
       });
     }
   }
-  if (comments.length === 0) { showToast('등록할 댓글이 없습니다. 먼저 카페SEO 원고를 생성하세요.'); return; }
+  if (comments.length === 0) { showToast('등록할 댓글이 없습니다. 먼저 카페 외부 원고를 생성하세요.'); return; }
   if (accIds.length < comments.length) { showToast(`계정 ${accIds.length}개로 댓글 ${comments.length}개를 등록할 수 없습니다. 계정을 더 선택하세요.`); return; }
 
   if (!confirm(`${comments.length}개 댓글을 ${accIds.length}개 계정으로 자동 등록합니다.\n게시글: ${url}\n\n계속하시겠습니까?`)) return;
@@ -1988,7 +1988,7 @@ function renderViral(mc) {
   const prod = JSON.parse(localStorage.getItem('blogProduct') || '{}');
   mc.innerHTML = `
   <div class="ka-wrap">
-    <div class="ka-title">🔥 카페바이럴</div>
+    <div class="ka-title">🔥 카페 내부</div>
 
     <!-- 모드 탭 -->
     <div class="ka-section">
@@ -2052,7 +2052,7 @@ function renderViral(mc) {
 
     <!-- 제품 정보 -->
     <div class="ka-section">
-      <div class="ka-section-title">제품 정보 <span style="font-size:11px;color:var(--text-muted)">(블로그/카페SEO와 공유, 자동 저장)</span></div>
+      <div class="ka-section-title">제품 정보 <span style="font-size:11px;color:var(--text-muted)">(블로그/카페 외부와 공유, 자동 저장)</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <input class="ka-input" id="viralProdName" placeholder="제품명" value="${escapeHtml(prod.name||'')}" oninput="viralSaveProduct()">
         <input class="ka-input" id="viralProdBrand" placeholder="브랜드 키워드" value="${escapeHtml(prod.brand_keyword||'')}" oninput="viralSaveProduct()">
@@ -2114,7 +2114,7 @@ function renderViral(mc) {
   viralLoadAccounts();
 }
 
-// ── 카페바이럴 탭 전환 ──
+// ── 카페 내부 탭 전환 ──
 function viralSwitchTab(tab) {
   document.getElementById('viralSetTab').style.display = tab==='set'?'':'none';
   document.getElementById('viralStageTab').style.display = tab==='stage'?'':'none';
@@ -3766,7 +3766,7 @@ function renderKwStatus(mc) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <select class="ka-input" id="kwsFilterCh" onchange="kwsApplyFilter()">
           <option value="">채널: 전체</option>
-          <option>블로그</option><option>카페</option><option>카페SEO</option><option>지식인</option><option>유튜브</option><option>틱톡</option><option>커뮤니티</option><option>쓰레드</option>
+          <option>블로그</option><option>카페</option><option>카페 외부</option><option>지식인</option><option>유튜브</option><option>틱톡</option><option>커뮤니티</option><option>쓰레드</option>
         </select>
         <select class="ka-input" id="kwsFilterWork" onchange="kwsApplyFilter()">
           <option value="">상태: 전체</option><option>미작업</option><option>생성완료</option>
@@ -3932,7 +3932,7 @@ function kwsRenderTable() {
   document.getElementById('kwsCount').textContent = KWS.filtered.length+'/'+KWS.rows.length+'개 표시';
 }
 
-const CH_OPTIONS = ['블로그','카페SEO','지식인','유튜브','틱톡','커뮤니티','파워컨텐츠'];
+const CH_OPTIONS = ['블로그','카페 외부','지식인','유튜브','틱톡','커뮤니티','파워컨텐츠'];
 function kwsOpenChDropdown(idx, td) {
   document.querySelectorAll('.ch-dropdown').forEach(d=>d.remove());
   const r = KWS.filtered[idx];
@@ -5758,8 +5758,8 @@ async function pcSaveNotion() {
 }
 
 // ═══════════════════════════ DEPLOY SCHEDULE ═══════════════════════════
-var DS_CHANNELS = ['블로그','카페','지식인','카페바이럴','커뮤니티','파워컨텐츠'];
-function dsGetGoals() { return JSON.parse(localStorage.getItem('dsGoals')||'{"블로그":3,"카페":3,"지식인":5,"카페바이럴":1,"커뮤니티":1,"파워컨텐츠":1}'); }
+var DS_CHANNELS = ['블로그','카페','지식인','카페 내부','커뮤니티','파워컨텐츠'];
+function dsGetGoals() { return JSON.parse(localStorage.getItem('dsGoals')||'{"블로그":3,"카페":3,"지식인":5,"카페 내부":1,"커뮤니티":1,"파워컨텐츠":1}'); }
 function dsGetViral() { return JSON.parse(localStorage.getItem('dsViral')||'[]'); }
 function dsGetInterval() { return parseInt(localStorage.getItem('dsViralInterval')||'3'); }
 
@@ -5774,7 +5774,7 @@ function renderDeploySchedule(mc) {
     // 주간 캘린더
     + '<div class="ka-section"><div class="ka-section-title">이번 주 캘린더</div><div id="dsWeekCal" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div></div>'
     // 바이럴 타이밍
-    + '<div class="ka-section"><div class="ka-section-title">📦 카페바이럴 진행 현황</div>'
+    + '<div class="ka-section"><div class="ka-section-title">📦 카페 내부 진행 현황</div>'
     + '<div id="dsViralTable"></div>'
     + '<div style="margin-top:8px;display:flex;gap:8px;align-items:center">'
     + '<input class="ka-input" id="dsViralCafe" placeholder="카페명" style="width:150px">'
@@ -6328,7 +6328,7 @@ function wrSaveGoals() {
 }
 function wrGetGoal(channel) {
   var goals = JSON.parse(localStorage.getItem('wrGoals')||'{}');
-  var map = {'블로그':'블로그','카페SEO':'카페','카페':'카페','카페바이럴':'바이럴','지식인':'지식인','커뮤니티':'커뮤니티','파워컨텐츠':'파워컨텐츠','유튜브':'유튜브','틱톡':'틱톡','메타광고':'메타광고'};
+  var map = {'블로그':'블로그','카페 외부':'카페','카페':'카페','카페 내부':'바이럴','지식인':'지식인','커뮤니티':'커뮤니티','파워컨텐츠':'파워컨텐츠','유튜브':'유튜브','틱톡':'틱톡','메타광고':'메타광고'};
   return goals[map[channel]||channel]||0;
 }
 function wrPreset(p) {
@@ -6477,7 +6477,7 @@ function renderUtm(mc) {
         <input class="ka-input" id="utmBaseUrl" placeholder="제품 URL (필수)" style="grid-column:span 2">
         <select class="ka-input" id="utmChannel">
           <option value="">채널 선택</option>
-          <option>블로그</option><option>카페SEO</option><option>카페바이럴</option>
+          <option>블로그</option><option>카페 외부</option><option>카페 내부</option>
           <option>지식인</option><option>커뮤니티</option><option>파워컨텐츠</option>
           <option>유튜브</option><option>틱톡</option><option>쓰레드</option><option>메타광고</option>
         </select>
@@ -6860,7 +6860,8 @@ function renderPromptTest(mc) {
           <input class="ka-input" id="ptIngr" placeholder="주요 성분" value="${esc(prod.ingredients||'')}" style="width:100%;">
         </div>
         <div style="display:flex;gap:8px;">
-          <button class="ka-btn ka-btn-primary" onclick="ptGenerate()" id="ptGenBtn">생성</button>
+          <button class="ka-btn ka-btn-primary" onclick="ptGenerate()" id="ptGenBtn">생성 (API 비용 발생)</button>
+          <button class="ka-btn" onclick="ptCopyForChat()" id="ptCopyBtn" style="background:#8b5cf6;color:#fff;">📋 시크릿 채팅용 복사 (무료)</button>
           <button class="ka-btn" onclick="ptReset()">원본 복원</button>
           <button class="ka-btn" onclick="ptSave()" style="background:#22c55e;color:#fff;">이 프롬프트 저장</button>
         </div>
@@ -6881,7 +6882,7 @@ async function ptLoadChannels() {
     const d = await r.json();
     const el = document.getElementById('ptChannelBtns');
     const labels = {
-      '블로그':'📝 블로그','카페SEO_제목':'☕ 카페 제목','카페SEO_본문':'☕ 카페 본문','카페SEO_댓글':'☕ 카페 댓글','카페SEO_답글':'☕ 카페 답글','카페SEO_Polish':'☕ 카페 Polish',
+      '블로그':'📝 블로그','카페 외부_제목':'☕ 카페 제목','카페 외부_본문':'☕ 카페 본문','카페 외부_댓글':'☕ 카페 댓글','카페 외부_답글':'☕ 카페 답글','카페 외부_Polish':'☕ 카페 Polish',
       '지식인_질문제목':'❓ 지식인 질문제목','지식인_질문본문':'❓ 지식인 질문본문','지식인_답변':'❓ 지식인 답변',
       '틱톡':'🎵 틱톡','커뮤니티':'💬 커뮤니티',
       '쓰레드_일상글':'🧵 일상글','쓰레드_물길글_셔플':'🧵 셔플식','쓰레드_물길글_연민':'🧵 연민식','쓰레드_물길글_후기':'🧵 후기식'
@@ -6939,6 +6940,23 @@ async function ptGenerate() {
     document.getElementById('ptResultChars').textContent = `(${d.char_count || 0}자)`;
   } catch(e) { showToast('생성 실패: ' + e.message); }
   btn.disabled = false; btn.textContent = '생성';
+}
+
+async function ptCopyForChat() {
+  if (!PT.channel) { showToast('채널을 선택하세요'); return; }
+  const btn = document.getElementById('ptCopyBtn');
+  btn.disabled = true; btn.textContent = '프롬프트 조립 중...';
+  try {
+    const r = await fetch('/api/prompt-test/get-full?channel=' + encodeURIComponent(PT.channel));
+    const d = await r.json();
+    if (d.error) { showToast(d.error); return; }
+
+    // 시크릿 채팅용 래핑
+    const wrapped = `[역할]\n${d.system_prompt}\n\n---\n\n[작업]\n${d.user_prompt}\n\n---\n\n[최종 확인]\n위 역할과 작업 지시를 정확히 따라 결과물을 생성해주세요. 추가 설명 없이 결과물만 출력하세요.`;
+    await navigator.clipboard.writeText(wrapped);
+    showToast('✅ 시크릿 채팅용 프롬프트 복사 완료 — claude.ai에 붙여넣기하세요', 'success');
+  } catch(e) { showToast('복사 실패: ' + e.message); }
+  btn.disabled = false; btn.textContent = '📋 시크릿 채팅용 복사 (무료)';
 }
 
 async function ptSave() {
@@ -7806,8 +7824,8 @@ function renderInbox(mc) {
         <select id="inboxChFilter" onchange="inboxLoad()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-primary);color:var(--text-primary);font-size:13px">
           <option value="">전체 채널</option>
           <option value="blog">블로그</option>
-          <option value="cafe-seo">카페SEO</option>
-          <option value="cafe-viral">카페바이럴</option>
+          <option value="cafe-seo">카페 외부</option>
+          <option value="cafe-viral">카페 내부</option>
           <option value="jisikin">지식인</option>
           <option value="youtube">유튜브</option>
           <option value="tiktok">틱톡</option>

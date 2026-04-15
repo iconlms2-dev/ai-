@@ -63,28 +63,53 @@ def _analyze_blog_article(url, keyword):
 
 
 def _analyze_top_for_blog(keyword):
-    """상위글 분석 → 평균 사진수, 키워드반복수"""
+    """블로그 탭에서 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}
     try:
-        r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=nexearch", headers=headers, timeout=10)
+        # 블로그 탭에서 검색 (통검 아님)
+        r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=blog", headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
+
+        # 상위글 제목+URL 수집 (최대 5개)
+        top_titles = []
         urls = []
-        for a in soup.find_all('a', href=re.compile(r'blog\.naver\.com/[^/]+/\d+')):
-            href = a.get('href', '')
-            if href not in urls:
-                urls.append(href)
-            if len(urls) >= 3:
-                break
+        for item in soup.select('.api_txt_lines.total_tit'):
+            title_text = item.get_text(strip=True)
+            href = item.get('href', '')
+            if title_text and href and 'blog.naver.com' in href:
+                top_titles.append(title_text)
+                if href not in urls:
+                    urls.append(href)
+                if len(top_titles) >= 5:
+                    break
+
+        # 셀렉터 실패 시 fallback
         if not urls:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0}
+            for a in soup.find_all('a', href=re.compile(r'blog\.naver\.com/[^/]+/\d+')):
+                href = a.get('href', '')
+                title_text = a.get_text(strip=True)
+                if href not in urls:
+                    urls.append(href)
+                    if title_text and len(title_text) > 5:
+                        top_titles.append(title_text)
+                if len(urls) >= 5:
+                    break
+
+        if not urls:
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': '', 'top_titles': []}
+
+        # 상위 3개 본문 분석
         results = []
+        articles = []  # 개별 글 상세 정보
         for url in urls[:3]:
             a = _analyze_blog_article(url, keyword)
             if a:
                 results.append(a)
+                articles.append({'url': url, 'char_count': a['char_count'], 'photo_count': a['photo_count'], 'keyword_repeat': a['keyword_repeat']})
             time.sleep(0.5)
         if not results:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': ''}
+            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': '', 'top_titles': top_titles, 'articles': []}
+
         avg_char = round(sum(r.get('char_count', 0) for r in results) / len(results))
         # 상위글 중 평균 글자수에 가장 가까운 1개의 본문을 참고용으로 선택
         reference_body = ''
@@ -95,44 +120,65 @@ def _analyze_top_for_blog(keyword):
                 diff = abs(r.get('char_count', 0) - avg_char)
                 if diff < best_diff:
                     best_diff = diff
-                    reference_body = body[:2000]  # 최대 2000자
+                    reference_body = body[:2000]
         return {
             'photo_count': max(round(sum(r['photo_count'] for r in results) / len(results)), 3),
             'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
             'char_count': avg_char,
             'reference_body': reference_body,
+            'top_titles': top_titles,
+            'articles': articles,
         }
     except Exception as e:
         print(f"[_analyze_top_for_blog] {e}")
-        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': ''}
+        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': '', 'top_titles': []}
 
 
 # ── 프롬프트 빌더 ──
 
-def _build_blog_title_prompt(keyword, product):
-    """블로그 제목 프롬프트 (STEP 1)"""
-    system = """당신은 네이버 블로그의 상위 노출을 목표로 하는 제목 작성 전문가입니다.
+def _build_blog_title_prompt(keyword, product, top_titles=None):
+    """블로그 제목 프롬프트 (STEP 1) — 상위글 제목 참고"""
+    system = """너는 네이버 블로그 제목을 쓰는 사람이야.
+실제 블로그에 올라온 것처럼 자연스러운 제목 1개를 만들어줘.
+깔끔하게 다듬지 말고, 사람이 생각나는 대로 쓴 느낌으로.
 
-주어진 키워드를 기반으로 클릭을 유도할 수 있는 '한 문장 제목'을 1개 생성해주세요.
-
-[제목 작성 규칙]
-
+[규칙]
 1. 키워드는 제목에 반드시 1회 자연스럽게 포함
-2. 후기처럼 보이게 작성 (예: "진짜 이틀 만에 해결됨", "저만 그런 줄 알았어요")
-3. 기호, 과장 표현 금지: "대박템", "~강추", 특수문자 나열 등 제외
-4. 말투는 자연스럽고 말하듯이, 궁금증이나 결과 중심 포맷이면 더 좋음
-5. 한 문장으로 간결하게 출력 (제목만 출력, 다른 설명 없이)
+2. 광고 느낌 금지 ("대박템", "강추", 특수문자 나열 등)
+3. 제목만 출력. 다른 설명 없이.
 
-[출력 예시]
-- "{keyword} 진짜 이틀 만에 사라졌어요"
-- "{keyword} 저만 겪는 줄 알았는데..."
-- "이거 하나로 {keyword} 해결한 후기\""""
+[좋은 제목 예시 — 이 톤과 구조를 참고]
+- 손목 저주파 마사지기 내돈내산 만족후기 (feat.미라클메디핏)
+- 의료용 손목보호대 추천? 비교해보니 결국 손목통증에 좋은 건…
+- 안명홍조 없애는 법 리얼 후기 l 레드포힐 화장품 장벽 재생크림 추천
+- 주사피부염 피부 레드포힐 장벽크림 3주 사용후기
+- 3040대 악건성피부케어 속보습? 파믹 진정크림으로 해결!
+- 남성썬크림 유분기 없는 스포츠 선크림 자외선 차단제 추천템 BEST3
 
-    user = f"""[입력 정보]
-- 상위 노출 키워드: {keyword}
+[이 예시들의 특징 — 반드시 반영]
+- 키워드가 앞쪽에 옴
+- 후기형, 추천형, 비교형, 해결형 등 다양한 스타일
+- 구체적 디테일 (기간, 숫자, 나이대 등)
+- 제품명이 자연스럽게 들어감
+- "내돈내산", "리얼 후기", "솔직" 같은 진짜 느낌 표현
+- 질문("추천?", "속보습?"), 구분자("l", "feat.", "…") 활용
 
-[제목 작성 규칙]
-"{keyword}"는 제목에 반드시 1회 자연스럽게 포함"""
+[참고]
+- 아래 상위 노출 제목들의 말투, 길이, 구조를 흡수해서 같은 검색 결과에 섞여도 어색하지 않게 작성"""
+
+    titles_text = ''
+    if top_titles:
+        titles_text = '\n'.join(f'- {t}' for t in top_titles[:5])
+    else:
+        titles_text = '(상위글 제목 데이터 없음 — 키워드만으로 생성)'
+
+    user = f"""[키워드]
+{keyword}
+
+[현재 이 키워드의 상위 노출 블로그 제목들]
+{titles_text}
+
+위 상위글 제목들과 같은 검색 결과에 자연스럽게 섞일 수 있는 제목 1개를 만들어줘."""
     return system, user
 
 
@@ -221,8 +267,9 @@ __CHAR_RULE__
 - 사진과 함께 배치될 때 설득력이 극대화됨
 
 📌 마무리 세부 규칙:
-- 재구매 의사 + 조건부 추천
-- 나만의 키워드를 자연스럽게 삽입 ("궁금하신 분들은 {나만의 키워드}로 검색해보세요")
+- 재구매 의사 + 조건부 추천 ("저한테는 맞았어요" 식)
+- 제품명 검색을 유도하지 마. "활낙산 찾아보세요" ❌ → "전립선 영양제 고를 때 낙산 성분 있는지 확인해보세요" ✅
+- 고객은 제품명을 모르고 들어온 사람이야. 카테고리(전립선 영양제, 정력 영양제 등) 기준으로 말해
 
 ---
 
@@ -260,7 +307,7 @@ __CHAR_RULE__
 ---
 
 ✍️ 톤 & 문체:
-- 말하듯이, 진솔하고 공감하는 톤. 존댓말 유지(~요).
+- 아래 [참고 상위글]이 제공되면, 그 글의 말투·문장 길이·표현 방식을 최대한 따라해. 상위글처럼 써야 같은 검색 결과에서 자연스러움.
 - 과장된 광고 문구 자제. 정보+체험 혼합 톤.
 - 동일 표현의 반복만 제거하고, 다른 표현이면 유지한다. 전체 분량은 상위글 평균 대비 ±10% 이내로 유지한다. (요약 금지)
 
@@ -269,6 +316,10 @@ __CHAR_RULE__
 - "대박", "강추", "꼭 사세요" 등 직접적 구매 유도
 - 이모지 사용 금지
 - 불릿/번호 목록, 표, 코드블록 출력 금지
+- 성분의 작용 메커니즘을 단계별로 설명하지 마. "A성분 → B에 도움 → B가 C에 도움" 식으로 풀지 말고, "A성분 → C에 도움"으로 바로 연결해.
+- 제품과 직접 관련 없는 효과(컨디션, 체중변화, 피로회복 등)를 언급하지 마. 제품의 핵심 효능에만 집중해.
+- 장(腸), 장내, 장건강, 장 환경, 흡수 효율 등 장 관련 서술 금지. 성분→효과를 장을 경유해서 설명하지 마.
+- AI 번역체 표현 금지: "~것 같았어요", "~영향을 미치는 것 같았어요", "~실제로 ~에도 영향을 미치는", "~하지 않았나 싶더라고요", "~작용하는 느낌이었어요" 같은 매끄럽고 정돈된 문장 금지. 실제 블로그처럼 약간 거칠고 구어체로 써.
 
 ---
 
@@ -353,10 +404,10 @@ __CHAR_RULE__
         user += f"""
 
 ---
-[참고 상위글]
-아래는 현재 네이버 검색 상위에 노출된 블로그 글의 본문 일부입니다.
-전개 흐름과 톤을 참고하되, 위의 작성 규칙이 항상 우선합니다.
-절대 내용을 베끼지 말고, 구조와 분위기만 참고하세요.
+[참고 상위글 — 이 글의 말투를 따라해]
+아래는 이 키워드로 네이버 상위 노출된 실제 블로그 글입니다.
+이 글의 말투, 문장 길이, 표현 방식, 줄바꿈 습관을 최대한 따라 써.
+내용을 베끼지 말고, "이 사람이 다른 주제로 글을 쓰면 이렇게 쓰겠다" 느낌으로 문체만 흡수해.
 
 {reference_body}"""
 
@@ -459,6 +510,7 @@ async def blog_build_prompt(request: Request):
     body = await request.json()
     keywords = body.get('keywords', [])
     product = body.get('product', {})
+    user_title = body.get('user_title', '')
     loop = asyncio.get_running_loop()
     results = []
 
@@ -472,17 +524,16 @@ async def blog_build_prompt(request: Request):
         kr = analysis['keyword_repeat']
         ct = analysis.get('char_count', 0)
 
-        # 2. 제목 생성 (API — 짧아서 비용 미미)
+        # 2. 제목 프롬프트 조립 (API 호출 X — claude.ai에서 직접 테스트)
         overrides = _prompt_load_overrides()
         title_sys = overrides.get('블로그_제목', None)
         if title_sys:
             title_usr = f"[입력 정보]\n- 상위 노출 키워드: {kw}\n\n[제목 작성 규칙]\n\"{kw}\"는 제목에 반드시 1회 자연스럽게 포함"
         else:
-            title_sys, title_usr = _build_blog_title_prompt(kw, product)
-        title_raw = await loop.run_in_executor(executor, call_claude, title_sys, title_usr)
-        title = title_raw.strip().replace('제목:', '').replace('제목 :', '').strip()
-        if '\n' in title:
-            title = title.split('\n')[0].strip()
+            title_sys, title_usr = _build_blog_title_prompt(kw, product, top_titles=analysis.get('top_titles', []))
+        combined_title = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{title_sys}\n\n---\n\n{title_usr}"
+        # 사용자가 제목을 입력했으면 사용, 아니면 placeholder
+        title = user_title if user_title else '(제목란에 입력하세요)'
 
         # 3. 본문 프롬프트 조립 (API 호출 X)
         ref_body = analysis.get('reference_body', '')
@@ -498,6 +549,12 @@ async def blog_build_prompt(request: Request):
             'stage': stage,
             'title': title,
             'analysis': {'photo_count': pc, 'keyword_repeat': kr, 'char_count': ct},
+            'crawled': {'top_titles': analysis.get('top_titles', []), 'reference_body': ref_body[:2000], 'articles': analysis.get('articles', [])},
+            'title_prompt': {
+                'system_prompt': title_sys,
+                'user_prompt': title_usr,
+                'combined': combined_title,
+            },
             'body_prompt': {
                 'system_prompt': body_sys,
                 'user_prompt': body_usr,
@@ -540,7 +597,7 @@ async def blog_generate(request: Request):
             if title_sys:
                 title_usr = f"[입력 정보]\n- 상위 노출 키워드: {kw}\n\n[제목 작성 규칙]\n\"{kw}\"는 제목에 반드시 1회 자연스럽게 포함"
             else:
-                title_sys, title_usr = _build_blog_title_prompt(kw, product)
+                title_sys, title_usr = _build_blog_title_prompt(kw, product, top_titles=analysis.get('top_titles', []))
             title_raw = await loop.run_in_executor(executor, call_claude, title_sys, title_usr)
             title = title_raw.strip().replace('제목:', '').replace('제목 :', '').strip()
             if '\n' in title:

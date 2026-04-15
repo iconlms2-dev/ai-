@@ -263,29 +263,25 @@ async def jisikin_build_prompt(request: Request):
     for kw_data in keywords:
         kw = kw_data['keyword']
 
-        # 질문 제목 생성 (API)
+        # 질문 제목 프롬프트 조립 (API 호출 X)
         sys1, usr1 = _build_jisikin_title_prompt(kw, product)
-        q_title = await loop.run_in_executor(executor, call_claude, sys1, usr1)
-        q_title = q_title.strip().split('\n')[0].strip().strip('"').strip()
+        combined_title = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys1}\n\n---\n\n{usr1}"
 
-        # 질문 본문 생성 (API)
+        # 질문 본문 프롬프트 조립 (API 호출 X)
         sys2, usr2 = _build_jisikin_body_prompt(kw, product)
-        q_body = await loop.run_in_executor(executor, call_claude, sys2, usr2)
-        q_body = q_body.strip()
+        combined_body = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys2}\n\n---\n\n{usr2}"
 
         # 답변 프롬프트 조립 (API 호출 X)
-        sys3, usr3 = _build_jisikin_answers_prompt(kw, q_title, q_body, product)
-        combined = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
+        sys3, usr3 = _build_jisikin_answers_prompt(kw, '(제목 프롬프트 결과를 여기에 넣으세요)', '(본문 프롬프트 결과를 여기에 넣으세요)', product)
+        combined_answers = f"다음 시스템 프롬프트의 역할을 수행해주세요.\n\n---\n\n{sys3}\n\n---\n\n{usr3}"
 
         results.append({
             'keyword': kw,
-            'q_title': q_title,
-            'q_body': q_body,
-            'answers_prompt': {
-                'system_prompt': sys3,
-                'user_prompt': usr3,
-                'combined': combined,
-            }
+            'q_title': '(claude.ai에서 제목 프롬프트를 먼저 실행하세요)',
+            'q_body': '(claude.ai에서 본문 프롬프트를 실행하세요)',
+            'title_prompt': {'system_prompt': sys1, 'user_prompt': usr1, 'combined': combined_title},
+            'body_prompt': {'system_prompt': sys2, 'user_prompt': usr2, 'combined': combined_body},
+            'answers_prompt': {'system_prompt': sys3, 'user_prompt': usr3, 'combined': combined_answers},
         })
 
     return {'results': results}
