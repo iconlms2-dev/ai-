@@ -303,49 +303,6 @@ def analyze_top_for_blog(keyword):
         return {'photo_count': 8, 'keyword_repeat': 5}
 
 
-def analyze_cafe_article(url, keyword):
-    """개별 카페 글 분석: 사진수, 키워드반복수, 글자수"""
-    try:
-        mobile_url = url.replace('cafe.naver.com', 'm.cafe.naver.com')
-        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'}
-        r = req.get(mobile_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        body = soup.get_text()
-        photo_count = len(soup.find_all('img', src=re.compile(r'cafeptthumb|postfiles|blogfiles|phinf')))
-        kw_repeat = body.lower().count(keyword.lower())
-        char_count = len(body.replace(' ', '').replace('\n', ''))
-        return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1), 'char_count': char_count}
-    except Exception:
-        return None
-
-
-def analyze_top_for_cafe(keyword):
-    """카페 상위글 3개 분석 → 평균 사진수, 키워드반복수, 글자수"""
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}
-    try:
-        r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=article", headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        urls = []
-        for a in soup.find_all('a', href=re.compile(r'cafe\.naver\.com.*ArticleRead')):
-            href = a.get('href', '')
-            if href not in urls:
-                urls.append(href)
-            if len(urls) >= 3:
-                break
-        if not urls:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
-        results = []
-        for url in urls[:3]:
-            a = analyze_cafe_article(url, keyword)
-            if a:
-                results.append(a)
-            time.sleep(0.5)
-        if not results:
-            return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
-        return {
-            'photo_count': max(round(sum(r['photo_count'] for r in results) / len(results)), 3),
-            'keyword_repeat': max(round(sum(r['keyword_repeat'] for r in results) / len(results)), 3),
-            'char_count': max(round(sum(r['char_count'] for r in results) / len(results)), 800)
-        }
-    except Exception:
-        return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500}
+# 카페 분석 함수는 src/api/cafe.py의 _analyze_cafe_article, _analyze_top_for_cafe로 통합됨
+# (top_titles 반환 + 광고 필터링 개선 버전)
+# 카페 관련 분석이 필요하면 src.api.cafe 모듈을 import하거나 cafe_crawler를 직접 사용할 것

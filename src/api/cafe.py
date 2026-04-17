@@ -64,59 +64,83 @@ def _naver_save_accounts(accounts):
 # ── 상위글 분석 ──
 
 def _analyze_cafe_article(url, keyword):
-    """개별 카페 글 분석: 사진수, 키워드반복수, 글자수"""
-    try:
-        mobile_url = url.replace('cafe.naver.com', 'm.cafe.naver.com')
-        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)'}
-        r = req.get(mobile_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        body = soup.get_text()
-        photo_count = len(soup.find_all('img', src=re.compile(r'cafeptthumb|postfiles|blogfiles|phinf')))
-        kw_repeat = body.lower().count(keyword.lower())
-        char_count = len(body.replace(' ', '').replace('\n', ''))
-        return {'photo_count': max(photo_count, 1), 'keyword_repeat': max(kw_repeat, 1), 'char_count': char_count}
-    except Exception as e:
-        print(f"[_analyze_cafe_article] 오류: {e}")
-        return None
+    """개별 카페 글 분석: 사진수, 키워드반복수, 글자수 (3-tier 폴백)"""
+    from src.services.cafe_crawler import crawl_cafe_article as _crawl_impl
+    result = _crawl_impl(url)
+    return result.to_analysis_dict(keyword)
+
+
+def _extract_cafe_urls(soup, urls, top_titles, seen_articles, max_count):
+    """BeautifulSoup에서 카페 URL 추출 (광고 필터링 포함)"""
+    added = 0
+    for a in soup.find_all('a', href=lambda h: h and 'cafe.naver.com' in h):
+        if added >= max_count:
+            break
+        href = a.get('href', '')
+        text = a.get_text(strip=True)
+
+        # RE(댓글) 제외, 짧은 텍스트 제외
+        if text.startswith('RE') or len(text) < 10:
+            continue
+
+        # 글 번호가 포함된 URL만
+        article_match = re.search(r'cafe\.naver\.com/[^/]+/(\d+)', href)
+        if not article_match:
+            continue
+        article_id = article_match.group(1)
+        if article_id in seen_articles:
+            continue
+
+        # 광고 필터링: 부모 요소 class에 ad/sponsor 포함 시 제외
+        parent_div = a.find_parent(['li', 'div', 'section'])
+        if parent_div:
+            classes = ' '.join(parent_div.get('class', []))
+            if re.search(r'ad_|_ad|sponsor', classes):
+                continue
+            # 컨테이너 앞부분에 "광고" 텍스트 있으면 제외
+            first_text = parent_div.get_text()[:30]
+            if '광고' in first_text:
+                continue
+
+        seen_articles.add(article_id)
+        top_titles.append(text)
+        urls.append(href.split('?')[0])
+        added += 1
 
 
 def _analyze_top_for_cafe(keyword):
-    """카페 탭에서 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
+    """통합검색 우선 → 카페탭 보충, 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}
-    try:
-        r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=article", headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
+    top_titles = []
+    urls = []
+    seen_articles = set()
 
-        # 상위글 제목+URL 수집 (최대 5개)
-        top_titles = []
-        urls = []
-        seen_articles = set()
-        for a in soup.find_all('a', href=lambda h: h and 'cafe.naver.com' in h):
-            href = a.get('href', '')
-            text = a.get_text(strip=True)
-            # RE(댓글) 제외, 원글만
-            if text.startswith('RE'):
-                continue
-            # 글 번호가 포함된 URL만 (카페명/숫자 패턴)
-            article_match = re.search(r'cafe\.naver\.com/[^/]+/(\d+)', href)
-            if not article_match:
-                continue
-            article_id = article_match.group(1)
-            if article_id in seen_articles:
-                continue
-            # 제목처럼 보이는 텍스트만 (10자 이상)
-            if text and len(text) > 10:
-                seen_articles.add(article_id)
-                top_titles.append(text)
-                urls.append(href.split('?')[0])  # ?art= 파라미터 제거
-                if len(top_titles) >= 5:
-                    break
+    try:
+        # Phase 1: 통합검색(nexearch) — 카페 글 최대 3개
+        try:
+            r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=nexearch",
+                        headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            _extract_cafe_urls(soup, urls, top_titles, seen_articles, max_count=3)
+        except Exception:
+            pass
+
+        # Phase 2: 카페탭(article) — 나머지 보충 (총 5개까지)
+        remaining = 5 - len(top_titles)
+        if remaining > 0:
+            try:
+                r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=article",
+                            headers=headers, timeout=10)
+                soup = BeautifulSoup(r.text, 'html.parser')
+                _extract_cafe_urls(soup, urls, top_titles, seen_articles, max_count=remaining)
+            except Exception:
+                pass
 
         if not urls:
             return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 1500, 'top_titles': []}
 
         results = []
-        articles = []  # 개별 글 상세 정보
+        articles = []
         for url in urls[:3]:
             a = _analyze_cafe_article(url, keyword)
             if a:
@@ -165,30 +189,10 @@ def _search_cafe_top_article(keyword):
 
 
 def _crawl_cafe_article(url):
-    """네이버 카페 글 크롤링 (제목, 본문)"""
-    try:
-        mobile_url = url.replace('cafe.naver.com', 'm.cafe.naver.com')
-        if 'm.m.cafe' in mobile_url:
-            mobile_url = mobile_url.replace('m.m.cafe', 'm.cafe')
-        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'}
-        r = req.get(mobile_url, headers=headers, timeout=10, allow_redirects=True)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        title = ''
-        body_text = ''
-        for sel in ['.tit_area .title', 'h3.title_text', '.se-title-text', '.article_header .title']:
-            el = soup.select_one(sel)
-            if el:
-                title = el.get_text(strip=True)
-                break
-        for sel in ['.se-main-container', '.article_viewer', '.ContentRenderer', '#postContent']:
-            el = soup.select_one(sel)
-            if el:
-                body_text = el.get_text('\n', strip=True)
-                break
-        return {'title': title, 'body': body_text[:5000]}
-    except Exception as e:
-        print("Cafe crawl error: %s" % e)
-        return {'title': '', 'body': ''}
+    """네이버 카페 글 크롤링 (3-tier 폴백) — 기존 시그니처 호환"""
+    from src.services.cafe_crawler import crawl_cafe_article as _crawl_impl
+    result = _crawl_impl(url)
+    return result.to_legacy_dict()
 
 
 # ── 이미지 수집 ──
@@ -1118,7 +1122,7 @@ async def cafe_auto_comment(request: Request):
 
     async def generate():
       try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         total = len(comments)
         from src.cafe_comment_bot import run_auto_comments
 
@@ -1133,21 +1137,29 @@ async def cafe_auto_comment(request: Request):
             status = '✅' if r.get('success') else '❌'
             yield _sse({'type': 'result', 'data': r, 'cur': i+1, 'total': total,
                          'msg': f'[{i+1}/{total}] {r.get("label","")} — {status} {r.get("error","")}'})
-            if r.get('status_change') == '정지 의심':
-                accs = _naver_load_accounts()
-                for a in accs:
-                    if a['id'] == r.get('account_id'):
-                        a['status'] = '정지 의심'
-                        break
-                _naver_save_accounts(accs)
-            if r.get('success'):
-                accs = _naver_load_accounts()
-                for a in accs:
-                    if a['id'] == r.get('account_id'):
-                        a['total_posts'] = a.get('total_posts', 0) + 1
-                        a['last_used_at'] = datetime.now().isoformat()
-                        break
-                _naver_save_accounts(accs)
+            # read-modify-write를 하나의 lock 블록으로 보호
+            if r.get('status_change') == '정지 의심' or r.get('success'):
+                with _naver_accounts_lock:
+                    # lock 내부에서는 save가 중첩 lock을 걸지 않도록 load만 직접 수행
+                    import json as _json
+                    try:
+                        with open(NAVER_ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+                            accs = _json.load(f)
+                    except (FileNotFoundError, _json.JSONDecodeError):
+                        accs = []
+                    for a in accs:
+                        if a['id'] == r.get('account_id'):
+                            if r.get('status_change') == '정지 의심':
+                                a['status'] = '정지 의심'
+                            if r.get('success'):
+                                a['total_posts'] = a.get('total_posts', 0) + 1
+                                a['last_used_at'] = datetime.now().isoformat()
+                            break
+                    # save도 lock 내부에서 직접 수행 (중첩 lock 방지)
+                    tmp = NAVER_ACCOUNTS_FILE + '.tmp'
+                    with open(tmp, 'w', encoding='utf-8') as f:
+                        _json.dump(accs, f, ensure_ascii=False, indent=2)
+                    os.replace(tmp, NAVER_ACCOUNTS_FILE)
 
         success_count = sum(1 for r in results if r.get('success'))
         yield _sse({'type': 'complete', 'total': total, 'success': success_count, 'fail': total - success_count})

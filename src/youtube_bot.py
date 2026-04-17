@@ -61,58 +61,9 @@ def has_stealth() -> bool:
 
 # ─── 안티디텍트 스크립트 ───
 
-_STEALTH_INIT_SCRIPT = """
-// navigator.webdriver 제거
-Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+from src.services.stealth import STEALTH_INIT_SCRIPT
 
-// Chrome runtime 위장
-window.chrome = {
-    runtime: {},
-    loadTimes: function(){},
-    csi: function(){},
-    app: {isInstalled: false, InstallState: {DISABLED:'disabled',INSTALLED:'installed',NOT_INSTALLED:'not_installed'}, RunningState: {CANNOT_RUN:'cannot_run',READY_TO_RUN:'ready_to_run',RUNNING:'running'}},
-};
-
-// Permissions API 위장
-const originalQuery = window.navigator.permissions.query;
-window.navigator.permissions.query = (parameters) => (
-    parameters.name === 'notifications' ?
-        Promise.resolve({state: Notification.permission}) :
-        originalQuery(parameters)
-);
-
-// plugins 위장 (빈 배열이면 탐지됨)
-Object.defineProperty(navigator, 'plugins', {
-    get: () => [
-        {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format'},
-        {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: ''},
-        {name: 'Native Client', filename: 'internal-nacl-plugin', description: ''},
-    ],
-});
-
-// languages 위장
-Object.defineProperty(navigator, 'languages', {
-    get: () => ['ko-KR', 'ko', 'en-US', 'en'],
-});
-
-// WebGL vendor/renderer 위장
-const getParameter = WebGLRenderingContext.prototype.getParameter;
-WebGLRenderingContext.prototype.getParameter = function(parameter) {
-    if (parameter === 37445) return 'Intel Inc.';
-    if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-    return getParameter.call(this, parameter);
-};
-
-// connection.rtt 위장 (자동화 봇은 0인 경우가 많음)
-if (navigator.connection) {
-    Object.defineProperty(navigator.connection, 'rtt', {get: () => 50});
-}
-
-// Notification 위장
-if (!window.Notification) {
-    window.Notification = {permission: 'default'};
-}
-"""
+_STEALTH_INIT_SCRIPT = STEALTH_INIT_SCRIPT
 
 
 class YouTubeBot:
@@ -187,75 +138,92 @@ class YouTubeBot:
             )
 
         self._playwright = sync_playwright().start()
+        try:
+            label = self.account_label or (account or {}).get("label", "default")
+            safe = _safe_label(label)
 
-        label = self.account_label or (account or {}).get("label", "default")
-        safe = _safe_label(label)
+            # ─── 핑거프린트 매니저에서 context 옵션 가져오기 ───
+            if self.fingerprint_manager:
+                context_opts = self.fingerprint_manager.get_context_options(label)
+            else:
+                context_opts = {
+                    "user_agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    ),
+                    "viewport": {"width": 1280, "height": 800},
+                    "locale": "ko-KR",
+                    "timezone_id": "Asia/Seoul",
+                }
 
-        # ─── 핑거프린트 매니저에서 context 옵션 가져오기 ───
-        if self.fingerprint_manager:
-            context_opts = self.fingerprint_manager.get_context_options(label)
-        else:
-            context_opts = {
-                "user_agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                ),
-                "viewport": {"width": 1280, "height": 800},
-                "locale": "ko-KR",
-                "timezone_id": "Asia/Seoul",
+            # ─── 프록시 설정 ───
+            proxy_config = None
+            proxy_str = (account or {}).get("proxy", "")
+            if proxy_str:
+                proxy_config = self._parse_proxy(proxy_str)
+
+            # ─── 브라우저 실행 ───
+            launch_opts = {
+                "headless": self.headless,
+                "args": [
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-infobars",
+                    "--disable-dev-shm-usage",
+                    "--disable-accelerated-2d-canvas",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--disable-gpu",
+                    "--window-size=1280,800",
+                ],
             }
+            if proxy_config:
+                launch_opts["proxy"] = proxy_config
 
-        # ─── 프록시 설정 ───
-        proxy_config = None
-        proxy_str = (account or {}).get("proxy", "")
-        if proxy_str:
-            proxy_config = self._parse_proxy(proxy_str)
+            self._browser = self._playwright.chromium.launch(**launch_opts)
 
-        # ─── 브라우저 실행 ───
-        launch_opts = {
-            "headless": self.headless,
-            "args": [
-                "--disable-blink-features=AutomationControlled",
-                "--disable-features=IsolateOrigins,site-per-process",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-infobars",
-                "--disable-dev-shm-usage",
-                "--disable-accelerated-2d-canvas",
-                "--no-first-run",
-                "--no-zygote",
-                "--disable-gpu",
-                "--window-size=1280,800",
-            ],
-        }
-        if proxy_config:
-            launch_opts["proxy"] = proxy_config
+            # ─── 브라우저 컨텍스트 생성 ───
+            self._context = self._browser.new_context(**context_opts)
 
-        self._browser = self._playwright.chromium.launch(**launch_opts)
+            # ─── 쿠키 복원 ───
+            cookies_path = _get_cookies_dir() / f"{safe}.json"
+            if cookies_path.exists():
+                try:
+                    cookies = json.loads(cookies_path.read_text(encoding="utf-8"))
+                    self._context.add_cookies(cookies)
+                except Exception:
+                    pass
 
-        # ─── 브라우저 컨텍스트 생성 ───
-        self._context = self._browser.new_context(**context_opts)
+            # ─── 안티디텍트 스크립트 주입 ───
+            self._context.add_init_script(_STEALTH_INIT_SCRIPT)
 
-        # ─── 쿠키 복원 ───
-        cookies_path = _get_cookies_dir() / f"{safe}.json"
-        if cookies_path.exists():
+            # ─── 페이지 생성 ───
+            self._page = self._context.new_page()
+
+            # ─── playwright-stealth 적용 (설치된 경우) ───
+            if _HAS_STEALTH and stealth_sync:
+                stealth_sync(self._page)
+
+            return True
+        except Exception:
+            # 초기화 중 실패 시 playwright 및 browser 정리
             try:
-                cookies = json.loads(cookies_path.read_text(encoding="utf-8"))
-                self._context.add_cookies(cookies)
+                if self._browser:
+                    self._browser.close()
             except Exception:
                 pass
-
-        # ─── 안티디텍트 스크립트 주입 ───
-        self._context.add_init_script(_STEALTH_INIT_SCRIPT)
-
-        # ─── 페이지 생성 ───
-        self._page = self._context.new_page()
-
-        # ─── playwright-stealth 적용 (설치된 경우) ───
-        if _HAS_STEALTH and stealth_sync:
-            stealth_sync(self._page)
-
-        return True
+            try:
+                if self._playwright:
+                    self._playwright.stop()
+            except Exception:
+                pass
+            self._browser = None
+            self._context = None
+            self._page = None
+            self._playwright = None
+            raise
 
     def _parse_proxy(self, proxy_str: str) -> Optional[Dict]:
         """프록시 문자열을 Playwright 프록시 설정으로 변환.
