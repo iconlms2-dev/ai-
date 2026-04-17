@@ -24,8 +24,11 @@ from src.services.config import (
     THREADS_APP_SECRET,
     THREADS_ACCOUNTS_FILE,
     THREADS_QUEUE_FILE,
+    THREADS_REFERENCES_FILE,
     REDIRECT_BASE_URL,
 )
+import hashlib
+from collections import deque
 from src.services.ai_client import call_claude
 from src.services.review_service import review_and_save
 
@@ -64,6 +67,139 @@ def _threads_save_queue(data):
     with _threads_lock:
         with open(THREADS_QUEUE_FILE, 'w') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ── 레퍼런스 라이브러리 저장소 ──
+
+def _threads_load_refs_unlocked():
+    """lock 없이 레퍼런스 로드 — 호출자가 lock 보유 중일 때 사용"""
+    if os.path.exists(THREADS_REFERENCES_FILE):
+        try:
+            with open(THREADS_REFERENCES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {'references': []}
+
+
+def _threads_save_refs_unlocked(data):
+    """lock 없이 atomic write — 호출자가 lock 보유 중일 때 사용"""
+    tmp = THREADS_REFERENCES_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, THREADS_REFERENCES_FILE)
+
+
+def _threads_load_refs():
+    """레퍼런스 라이브러리 로드 (lock 포함)"""
+    with _threads_lock:
+        return _threads_load_refs_unlocked()
+
+
+def _threads_save_refs(data):
+    """atomic write (lock 포함)"""
+    with _threads_lock:
+        _threads_save_refs_unlocked(data)
+
+
+def _threads_dedup_hash(source, source_value, text):
+    """source + source_value + normalize(text)[:300] 해시"""
+    normalized = re.sub(r'\s+', '', (text or '').lower())[:300]
+    key = f"{source}|{source_value or ''}|{normalized}"
+    return hashlib.sha1(key.encode('utf-8')).hexdigest()
+
+
+def _threads_normalize_post(post, source, source_value):
+    """저장 전 post 누락 필드 보정.
+
+    - text, likes, replies, reposts는 원본 유지
+    - engagement_score = likes + replies*3 + reposts*5 (서버 재계산)
+    - url, username, hashtags 누락 시 빈 값으로 채움
+    """
+    text = str(post.get('text', '') or '')[:5000]
+    likes = int(post.get('likes', 0) or 0)
+    replies = int(post.get('replies', 0) or 0)
+    reposts = int(post.get('reposts', 0) or 0)
+    hashtags = post.get('hashtags') or re.findall(r'#[\w가-힣]+', text)
+    username = (post.get('username') or '').strip()
+    url = (post.get('url') or '').strip()
+    keyword = source_value if source == 'keyword' else None
+
+    return {
+        'source': source,
+        'source_value': source_value,
+        'keyword': keyword,
+        'username': username,
+        'text': text,
+        'url': url,
+        'likes': likes,
+        'replies': replies,
+        'reposts': reposts,
+        'hashtags': list(hashtags),
+        'engagement_score': likes + replies * 3 + reposts * 5,
+    }
+
+
+def _threads_persist_one(post, source, source_value):
+    """단건 저장. 중복이면 engagement 필드와 crawled_at 갱신.
+
+    TOCTOU 방지를 위해 load-modify-save를 하나의 lock 블록 안에서 수행.
+
+    Returns:
+        (ref_id, is_new): is_new=False면 중복 갱신됨
+    """
+    normalized = _threads_normalize_post(post, source, source_value)
+    h = _threads_dedup_hash(source, source_value, normalized['text'])
+
+    with _threads_lock:
+        data = _threads_load_refs_unlocked()
+        refs = data.get('references', [])
+
+        # 중복 감지: 같은 id(해시)이면 갱신
+        for item in refs:
+            if item.get('id') == h:
+                item['likes'] = normalized['likes']
+                item['replies'] = normalized['replies']
+                item['reposts'] = normalized['reposts']
+                item['engagement_score'] = normalized['engagement_score']
+                item['hashtags'] = normalized['hashtags']
+                item['crawled_at'] = datetime.now().isoformat()
+                # url/username이 새로 채워졌으면 업데이트
+                if normalized['url'] and not item.get('url'):
+                    item['url'] = normalized['url']
+                if normalized['username'] and not item.get('username'):
+                    item['username'] = normalized['username']
+                _threads_save_refs_unlocked(data)
+                return h, False
+
+        # 신규 저장
+        normalized['id'] = h
+        normalized['crawled_at'] = datetime.now().isoformat()
+        refs.append(normalized)
+        data['references'] = refs
+        _threads_save_refs_unlocked(data)
+        return h, True
+
+
+# ── API 레벨 rate limiter (crawl 엔드포인트 전용) ──
+
+_threads_crawl_rate_window = deque()  # 최근 타임스탬프
+_threads_crawl_rate_lock = threading.Lock()
+_RATE_LIMIT_WINDOW_SEC = 60
+_RATE_LIMIT_MAX_CALLS = 3
+
+
+def _check_crawl_rate_limit():
+    """True면 통과, False면 rate_limited"""
+    with _threads_crawl_rate_lock:
+        now = time.monotonic()
+        # 윈도우 밖 타임스탬프 제거
+        while _threads_crawl_rate_window and _threads_crawl_rate_window[0] < now - _RATE_LIMIT_WINDOW_SEC:
+            _threads_crawl_rate_window.popleft()
+        if len(_threads_crawl_rate_window) >= _RATE_LIMIT_MAX_CALLS:
+            return False
+        _threads_crawl_rate_window.append(now)
+        return True
 
 
 def _threads_api(access_token, endpoint, method='GET', data=None):
@@ -279,7 +415,36 @@ _threads_crawl_semaphore = asyncio.Semaphore(1)
 
 
 def _threads_crawl_account(username):
-    """Playwright로 Threads 참조계정 최근 글 크롤링"""
+    """Playwright로 Threads 참조계정 최근 글 크롤링 (threads_crawler 모듈 사용).
+
+    기존 시그니처 호환: list[dict] 반환 ({text, length, ...})
+    새 필드: likes, replies, reposts, hashtags, url, engagement_score
+    """
+    from src.services.threads_crawler import crawl_username
+    try:
+        resp = crawl_username(username, limit=10)
+        posts = []
+        for p in resp.posts:
+            text = p.get('text', '')
+            posts.append({
+                'text': text[:500],
+                'length': len(text),
+                'likes': p.get('likes', 0),
+                'replies': p.get('replies', 0),
+                'reposts': p.get('reposts', 0),
+                'hashtags': p.get('hashtags', []),
+                'url': p.get('url', ''),
+                'username': p.get('username', ''),
+                'engagement_score': p.get('engagement_score', 0),
+            })
+        return posts
+    except Exception as e:
+        print(f"[threads_crawl] 에러: {e}")
+        return []
+
+
+def _threads_crawl_account_DEPRECATED_legacy(username):
+    """(보존용 원본 — 호출 안 됨). 문제가 생기면 참고."""
     posts = []
     browser = None
     try:
@@ -295,11 +460,9 @@ def _threads_crawl_account(username):
             clean_name = username.lstrip('@')
             page.goto(f'https://www.threads.net/@{clean_name}', timeout=20000)
             page.wait_for_timeout(3000)
-            # 스크롤해서 포스트 로드
             for _ in range(3):
                 page.evaluate('window.scrollBy(0, 800)')
                 page.wait_for_timeout(1500)
-            # 포스트 텍스트 수집
             elements = page.query_selector_all('[data-pressable-container="true"]')
             for el in elements[:10]:
                 text = el.inner_text().strip()
@@ -309,7 +472,7 @@ def _threads_crawl_account(username):
                     if content and len(content) > 10:
                         posts.append({'text': content[:500], 'length': len(content)})
     except Exception as e:
-        print(f"[threads_crawl] 에러: {e}")
+        print(f"[threads_crawl_DEPRECATED] 에러: {e}")
     finally:
         try:
             if browser:
@@ -341,6 +504,137 @@ async def threads_crawl_reference(request: Request):
             posts = await loop.run_in_executor(executor, _threads_crawl_account, ref)
             all_posts.extend([{**p, 'source': ref} for p in posts])
     return {'posts': all_posts, 'count': len(all_posts)}
+
+
+# ────── 신규: 레퍼런스 라이브러리 크롤링 & 저장 ──────
+
+@router.post("/crawl-keyword")
+async def threads_crawl_keyword(request: Request):
+    """키워드 검색 크롤링 (미리보기). 쿠키 필수.
+
+    body: {keyword, limit=10}
+    응답: {ok, error, posts}
+    """
+    if not _check_crawl_rate_limit():
+        return JSONResponse(
+            {'ok': False, 'error': 'rate_limited', 'posts': []},
+            status_code=429,
+        )
+
+    body = await request.json()
+    keyword = (body.get('keyword') or '').strip()
+    limit = int(body.get('limit') or 10)
+    if not keyword:
+        return {'ok': False, 'error': 'invalid_keyword', 'posts': []}
+
+    # 쿠키 없으면 auth_required 즉시 반환
+    from src.services.threads_crawler import has_cookies, crawl_keyword
+    if not has_cookies():
+        return {'ok': False, 'error': 'auth_required', 'posts': []}
+
+    async with _threads_crawl_semaphore:
+        loop = asyncio.get_running_loop()
+        resp = await loop.run_in_executor(executor, crawl_keyword, keyword, limit)
+    return {'ok': resp.ok, 'error': resp.error, 'posts': resp.posts}
+
+
+@router.post("/crawl-username")
+async def threads_crawl_username(request: Request):
+    """@username 크롤링 (미리보기). 비로그인도 허용.
+
+    body: {username, limit=10}
+    응답: {ok, error, posts}
+    """
+    if not _check_crawl_rate_limit():
+        return JSONResponse(
+            {'ok': False, 'error': 'rate_limited', 'posts': []},
+            status_code=429,
+        )
+
+    body = await request.json()
+    username = (body.get('username') or '').strip()
+    limit = int(body.get('limit') or 10)
+    if not username:
+        return {'ok': False, 'error': 'invalid_username', 'posts': []}
+
+    from src.services.threads_crawler import crawl_username
+    async with _threads_crawl_semaphore:
+        loop = asyncio.get_running_loop()
+        resp = await loop.run_in_executor(executor, crawl_username, username, limit)
+    return {'ok': resp.ok, 'error': resp.error, 'posts': resp.posts}
+
+
+@router.post("/references")
+async def threads_create_reference(request: Request):
+    """단건 레퍼런스 저장. 중복이면 engagement 필드 갱신.
+
+    body: {post: {...}, source: "keyword"|"username", source_value: str}
+    응답: {ok, id, duplicate}
+    """
+    body = await request.json()
+    post = body.get('post') or {}
+    source = (body.get('source') or '').strip()
+    source_value = (body.get('source_value') or '').strip()
+
+    if not post.get('text'):
+        return {'ok': False, 'error': 'invalid_post'}
+    if source not in ('keyword', 'username'):
+        return {'ok': False, 'error': 'invalid_source'}
+
+    ref_id, is_new = _threads_persist_one(post, source, source_value)
+    return {'ok': True, 'id': ref_id, 'duplicate': not is_new}
+
+
+@router.get("/references")
+async def threads_list_references(
+    source: str = '',
+    username: str = '',
+    keyword: str = '',
+    sort: str = 'recent',
+    limit: int = 50,
+):
+    """레퍼런스 조회. 서버 측에서 필터 → 정렬 → limit 순서."""
+    data = _threads_load_refs()
+    refs = data.get('references', [])
+
+    # 필터
+    if source:
+        refs = [r for r in refs if r.get('source') == source]
+    if username:
+        u = username.lstrip('@')
+        refs = [r for r in refs if (r.get('username') or '').lstrip('@') == u]
+    if keyword:
+        refs = [r for r in refs if r.get('keyword') == keyword]
+
+    # 정렬
+    if sort == 'engagement':
+        refs = sorted(refs, key=lambda r: r.get('engagement_score', 0), reverse=True)
+    else:  # recent
+        refs = sorted(refs, key=lambda r: r.get('crawled_at', ''), reverse=True)
+
+    # limit
+    try:
+        lim = max(1, min(int(limit), 500))
+    except (ValueError, TypeError):
+        lim = 50
+    refs = refs[:lim]
+
+    return {'ok': True, 'references': refs, 'count': len(refs)}
+
+
+@router.delete("/references/{ref_id}")
+async def threads_delete_reference(ref_id: str):
+    """단건 레퍼런스 삭제 (TOCTOU 방지: lock 내부에서 load-modify-save)"""
+    with _threads_lock:
+        data = _threads_load_refs_unlocked()
+        refs = data.get('references', [])
+        before = len(refs)
+        refs = [r for r in refs if r.get('id') != ref_id]
+        if len(refs) == before:
+            return {'ok': False, 'error': 'not_found'}
+        data['references'] = refs
+        _threads_save_refs_unlocked(data)
+    return {'ok': True}
 
 
 # ────── 프롬프트 ──────

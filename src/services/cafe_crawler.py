@@ -449,18 +449,30 @@ def _tier2_cafe_api(url: str) -> CrawlResult:
 
 # ── Tier 3: Playwright + 쿠키 주입 + 브라우저 풀 ──
 
-def _cookies_for_playwright(cookies_dict: dict) -> list:
-    """Playwright add_cookies 형식으로 변환"""
+_HTTPONLY_COOKIES = {
+    # 네이버
+    "NID_AUT", "NID_SES",
+    # 인스타/쓰레드
+    "sessionid", "csrftoken",
+}
+
+
+def _cookies_for_playwright(cookies_dict: dict, domain: str = ".naver.com") -> list:
+    """Playwright add_cookies 형식으로 변환.
+
+    Args:
+        cookies_dict: {쿠키명: 값} dict
+        domain: 쿠키 도메인 (예: ".naver.com", ".instagram.com", ".threads.net")
+    """
     result = []
     for name, value in cookies_dict.items():
-        # 네이버 쿠키는 .naver.com 도메인
         result.append({
             "name": name,
             "value": str(value),
-            "domain": ".naver.com",
+            "domain": domain,
             "path": "/",
             "secure": True,
-            "httpOnly": name in ("NID_AUT", "NID_SES"),
+            "httpOnly": name in _HTTPONLY_COOKIES,
             "sameSite": "Lax",
         })
     return result
@@ -514,7 +526,7 @@ def _get_shared_browser():
         # 쿠키 주입
         cookies = _get_naver_cookies()
         if cookies:
-            _shared_context.add_cookies(_cookies_for_playwright(cookies))
+            _shared_context.add_cookies(_cookies_for_playwright(cookies, domain=".naver.com"))
             logger.info("[Tier3] 쿠키 %d개 주입", len(cookies))
 
         _shared_initialized = True

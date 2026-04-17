@@ -7085,7 +7085,8 @@ setInterval(async () => {
 
 // ═══════════════════════════ THREADS (쓰레드) ═══════════════════════════
 
-let THREADS = { accounts: [], results: [], refPosts: [], isRunning: false, abortCtrl: null, activeTab: 'accounts' };
+let THREADS = { accounts: [], results: [], refPosts: [], isRunning: false, abortCtrl: null, activeTab: 'accounts',
+  refLib: { previewPosts: [], saved: [], filterSource: '', sort: 'recent', loading: false, mode: 'keyword', inputValue: '' } };
 
 function renderThreads(mc) {
   mc.innerHTML = `
@@ -7099,6 +7100,7 @@ function renderThreads(mc) {
       <button class="ka-btn ${THREADS.activeTab==='traffic'?'ka-btn-primary':''}" onclick="threadsTab('traffic', event)" style="flex:1">물길글</button>
       <button class="ka-btn ${THREADS.activeTab==='comment'?'ka-btn-primary':''}" onclick="threadsTab('comment', event)" style="flex:1">댓글</button>
       <button class="ka-btn ${THREADS.activeTab==='queue'?'ka-btn-primary':''}" onclick="threadsTab('queue', event)" style="flex:1">스케줄</button>
+      <button class="ka-btn ${THREADS.activeTab==='reflib'?'ka-btn-primary':''}" onclick="threadsTab('reflib', event)" style="flex:1">레퍼런스</button>
     </div>
 
     <div id="threadsContent"></div>
@@ -7121,6 +7123,230 @@ function threadsRenderTab() {
   else if (THREADS.activeTab === 'traffic') threadsRenderTraffic(el);
   else if (THREADS.activeTab === 'comment') threadsRenderComment(el);
   else if (THREADS.activeTab === 'queue') threadsRenderQueue(el);
+  else if (THREADS.activeTab === 'reflib') threadsRenderRefLib(el);
+}
+
+// ── 레퍼런스 라이브러리 탭 ──
+
+function threadsRenderRefLib(el) {
+  const r = THREADS.refLib;
+  el.innerHTML = `
+    <div id="threadsRefLibBanner" style="display:none;background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;border:1px solid #fcd34d;"></div>
+
+    <!-- 영역 A: 크롤링 & 미리보기 -->
+    <div class="ka-section" style="background:rgba(91,124,250,0.04);border:1px solid rgba(91,124,250,0.2);">
+      <div class="ka-section-title">크롤링 & 미리보기</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button class="ka-btn ${r.mode==='keyword'?'ka-btn-primary':''}" onclick="threadsRefLibSetMode('keyword')" style="flex:1;">키워드 검색 (쿠키 필수)</button>
+        <button class="ka-btn ${r.mode==='username'?'ka-btn-primary':''}" onclick="threadsRefLibSetMode('username')" style="flex:1;">@username (비로그인 OK)</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <input class="ka-input" id="threadsRefLibInput" placeholder="${r.mode==='keyword' ? '키워드 입력 (예: 다이어트)' : '@username 또는 username'}" value="${escapeHtml(r.inputValue)}" style="flex:1;">
+        <input class="ka-input" id="threadsRefLibLimit" type="number" value="10" min="1" max="30" style="width:80px;" title="최대 개수">
+        <button class="ka-btn ka-btn-primary" onclick="threadsRefLibCrawl()" id="threadsRefLibCrawlBtn" ${r.loading?'disabled':''}>${r.loading?'크롤링 중...':'크롤링'}</button>
+      </div>
+      <div id="threadsRefLibPreview">
+        ${r.previewPosts.length === 0 ? '<p style="color:var(--text-secondary);font-size:12px;padding:8px 0;">크롤링 결과가 여기 표시됩니다. 각 카드의 [저장] 버튼으로 라이브러리에 추가.</p>' : ''}
+        ${r.previewPosts.map((p, i) => threadsRefLibPreviewCard(p, i)).join('')}
+      </div>
+    </div>
+
+    <!-- 영역 B: 저장된 라이브러리 -->
+    <div class="ka-section" style="margin-top:18px;">
+      <div class="ka-section-title">저장된 라이브러리 <span style="font-size:11px;color:var(--text-secondary);">(${r.saved.length}개)</span></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <select class="ka-input" id="threadsRefLibFilterSource" onchange="threadsRefLibReload()" style="flex:1;">
+          <option value="" ${!r.filterSource?'selected':''}>모든 소스</option>
+          <option value="keyword" ${r.filterSource==='keyword'?'selected':''}>키워드</option>
+          <option value="username" ${r.filterSource==='username'?'selected':''}>@username</option>
+        </select>
+        <select class="ka-input" id="threadsRefLibSort" onchange="threadsRefLibReload()" style="flex:1;">
+          <option value="recent" ${r.sort==='recent'?'selected':''}>최근 저장순</option>
+          <option value="engagement" ${r.sort==='engagement'?'selected':''}>인게이지먼트순</option>
+        </select>
+        <button class="ka-btn" onclick="threadsRefLibReload()">새로고침</button>
+      </div>
+      <div id="threadsRefLibSaved">
+        ${r.saved.length === 0 ? '<p style="color:var(--text-secondary);font-size:12px;padding:8px 0;">저장된 레퍼런스가 없습니다.</p>' : r.saved.map(s => threadsRefLibSavedCard(s)).join('')}
+      </div>
+    </div>
+  `;
+  threadsRefLibCheckCookie();
+  threadsRefLibReload();
+}
+
+function threadsRefLibPreviewCard(p, idx) {
+  const hashtags = (p.hashtags || []).join(' ');
+  const text = escapeHtml((p.text || '').slice(0, 400));
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;" id="threadsRefPreview${idx}">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
+          ${escapeHtml(p.username || '')} ${p.url && /^https?:\/\//.test(p.url) ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">↗</a>` : ''}
+          <span style="margin-left:8px;">❤️ ${p.likes||0} 💬 ${p.replies||0} 🔁 ${p.reposts||0}</span>
+          <span style="margin-left:8px;background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:11px;">score ${p.engagement_score||0}</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">${text}</div>
+        ${hashtags ? `<div style="font-size:11px;color:#6366f1;margin-top:4px;">${escapeHtml(hashtags)}</div>` : ''}
+      </div>
+      <button class="ka-btn ka-btn-primary" onclick="threadsRefLibSavePreview(${idx})" style="font-size:11px;padding:6px 12px;white-space:nowrap;">💾 저장</button>
+    </div>
+  </div>`;
+}
+
+function threadsRefLibSavedCard(s) {
+  const hashtags = (s.hashtags || []).join(' ');
+  const text = escapeHtml((s.text || '').slice(0, 400));
+  const srcLabel = s.source === 'keyword' ? `🔍 ${escapeHtml(s.source_value || '')}` : `@ ${escapeHtml(s.source_value || '')}`;
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
+          <span style="background:#e0e7ff;color:#4338ca;padding:2px 6px;border-radius:4px;">${srcLabel}</span>
+          ${escapeHtml(s.username || '')} ${s.url && /^https?:\/\//.test(s.url) ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">↗</a>` : ''}
+          <span style="margin-left:8px;">❤️ ${s.likes||0} 💬 ${s.replies||0} 🔁 ${s.reposts||0}</span>
+          <span style="margin-left:8px;background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:11px;">score ${s.engagement_score||0}</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">${text}</div>
+        ${hashtags ? `<div style="font-size:11px;color:#6366f1;margin-top:4px;">${escapeHtml(hashtags)}</div>` : ''}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">수집: ${escapeHtml((s.crawled_at||'').replace('T',' ').slice(0,19))}</div>
+      </div>
+      <button class="ka-btn" onclick="threadsRefLibDelete('${escapeHtml(s.id)}')" style="font-size:11px;padding:6px 10px;color:#ef4444;white-space:nowrap;">삭제</button>
+    </div>
+  </div>`;
+}
+
+function threadsRefLibSetMode(mode) {
+  THREADS.refLib.mode = mode;
+  THREADS.refLib.inputValue = document.getElementById('threadsRefLibInput')?.value || '';
+  threadsRenderTab();
+}
+
+async function threadsRefLibCheckCookie() {
+  // 쿠키 세팅 여부는 keyword 크롤링 시 응답으로 판단. 배너는 실패 시 표시.
+  const banner = document.getElementById('threadsRefLibBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+function threadsRefLibShowBanner(text) {
+  const banner = document.getElementById('threadsRefLibBanner');
+  if (banner) {
+    banner.textContent = text;
+    banner.style.display = '';
+  }
+}
+
+async function threadsRefLibCrawl() {
+  const r = THREADS.refLib;
+  const input = document.getElementById('threadsRefLibInput')?.value?.trim() || '';
+  const limit = parseInt(document.getElementById('threadsRefLibLimit')?.value || '10', 10);
+  if (!input) { showToast('입력값을 채워주세요'); return; }
+
+  THREADS.refLib.inputValue = input;
+  THREADS.refLib.loading = true;
+  threadsRenderTab();
+
+  try {
+    const endpoint = r.mode === 'keyword' ? '/api/threads/crawl-keyword' : '/api/threads/crawl-username';
+    const body = r.mode === 'keyword' ? { keyword: input, limit } : { username: input, limit };
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+
+    if (resp.status === 429) {
+      threadsRefLibShowBanner('⚠️ 요청이 너무 많습니다. 잠시 후 다시 시도하세요 (60초당 최대 3회).');
+      THREADS.refLib.previewPosts = [];
+    } else if (!data.ok) {
+      let msg = '크롤링 실패';
+      if (data.error === 'auth_required') msg = '❌ 쿠키 미설정 — 키워드 검색은 THREADS_COOKIE_JSON 환경변수가 필요합니다.';
+      else if (data.error === 'auth_blocked') msg = '❌ 쿠키 만료/거부 — 인스타그램 재로그인 후 쿠키 갱신 필요.';
+      else if (data.error === 'not_found') msg = '❌ 존재하지 않는 계정 또는 페이지.';
+      else if (data.error === 'network_error') msg = '❌ 네트워크 오류.';
+      else if (data.error) msg = '❌ ' + data.error;
+      threadsRefLibShowBanner(msg);
+      THREADS.refLib.previewPosts = [];
+    } else {
+      THREADS.refLib.previewPosts = data.posts || [];
+      if (THREADS.refLib.previewPosts.length === 0) {
+        threadsRefLibShowBanner('결과가 없습니다. 다른 키워드/계정으로 시도해보세요.');
+      }
+    }
+  } catch (e) {
+    threadsRefLibShowBanner('❌ 네트워크 오류: ' + e.message);
+    THREADS.refLib.previewPosts = [];
+  } finally {
+    THREADS.refLib.loading = false;
+    threadsRenderTab();
+  }
+}
+
+async function threadsRefLibSavePreview(idx) {
+  const r = THREADS.refLib;
+  const post = r.previewPosts[idx];
+  if (!post) return;
+  const source = r.mode === 'keyword' ? 'keyword' : 'username';
+  const source_value = r.inputValue;
+
+  try {
+    const resp = await fetch('/api/threads/references', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ post, source, source_value }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showToast(data.duplicate ? '이미 저장된 레퍼런스 (수치 갱신됨)' : '✅ 저장 완료', 'success');
+      threadsRefLibReload();
+    } else {
+      showToast('저장 실패: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    showToast('저장 실패: ' + e.message);
+  }
+}
+
+async function threadsRefLibReload() {
+  const filterSource = document.getElementById('threadsRefLibFilterSource')?.value || '';
+  const sort = document.getElementById('threadsRefLibSort')?.value || 'recent';
+  THREADS.refLib.filterSource = filterSource;
+  THREADS.refLib.sort = sort;
+
+  try {
+    const params = new URLSearchParams();
+    if (filterSource) params.set('source', filterSource);
+    params.set('sort', sort);
+    params.set('limit', '100');
+    const resp = await fetch('/api/threads/references?' + params.toString());
+    const data = await resp.json();
+    THREADS.refLib.saved = data.references || [];
+    const elSaved = document.getElementById('threadsRefLibSaved');
+    if (elSaved) {
+      elSaved.innerHTML = THREADS.refLib.saved.length === 0
+        ? '<p style="color:var(--text-secondary);font-size:12px;padding:8px 0;">저장된 레퍼런스가 없습니다.</p>'
+        : THREADS.refLib.saved.map(s => threadsRefLibSavedCard(s)).join('');
+    }
+  } catch (e) {
+    console.error('refLib reload error', e);
+  }
+}
+
+async function threadsRefLibDelete(refId) {
+  if (!confirm('이 레퍼런스를 삭제하시겠습니까?')) return;
+  try {
+    const resp = await fetch('/api/threads/references/' + encodeURIComponent(refId), { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.ok) {
+      showToast('삭제 완료');
+      threadsRefLibReload();
+    } else {
+      showToast('삭제 실패');
+    }
+  } catch (e) {
+    showToast('삭제 실패: ' + e.message);
+  }
 }
 
 // ── 계정 관리 탭 ──
