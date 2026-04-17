@@ -62,38 +62,75 @@ def _analyze_blog_article(url, keyword):
         return None
 
 
+def _extract_blog_urls(soup, urls, top_titles, seen_ids, max_count):
+    """BeautifulSoup에서 블로그 URL 추출 (정형 셀렉터 우선, fallback 포함)"""
+    added = 0
+
+    # 정형 셀렉터
+    for item in soup.select('.api_txt_lines.total_tit'):
+        if added >= max_count:
+            break
+        title_text = item.get_text(strip=True)
+        href = item.get('href', '')
+        if not title_text or not href or 'blog.naver.com' not in href:
+            continue
+        m = re.search(r'blog\.naver\.com/([^/?#]+)/(\d+)', href)
+        if not m:
+            continue
+        article_id = f"{m.group(1)}_{m.group(2)}"
+        if article_id in seen_ids:
+            continue
+        seen_ids.add(article_id)
+        top_titles.append(title_text)
+        urls.append(href.split('?')[0])
+        added += 1
+
+    # fallback
+    if added < max_count:
+        for a in soup.find_all('a', href=re.compile(r'blog\.naver\.com/[^/]+/\d+')):
+            if added >= max_count:
+                break
+            href = a.get('href', '')
+            title_text = a.get_text(strip=True)
+            m = re.search(r'blog\.naver\.com/([^/?#]+)/(\d+)', href)
+            if not m:
+                continue
+            article_id = f"{m.group(1)}_{m.group(2)}"
+            if article_id in seen_ids or len(title_text) < 5:
+                continue
+            seen_ids.add(article_id)
+            top_titles.append(title_text)
+            urls.append(href.split('?')[0])
+            added += 1
+
+
 def _analyze_top_for_blog(keyword):
-    """블로그 탭에서 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
+    """통합검색 우선 → 블로그탭 보충, 상위글 5개 제목+URL 수집 → 상위 3개 본문 분석"""
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}
+    top_titles = []
+    urls = []
+    seen_ids = set()
+
     try:
-        # 블로그 탭에서 검색 (통검 아님)
-        r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=blog", headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
+        # Phase 1: 통합검색(nexearch) — 블로그 글 최대 3개
+        try:
+            r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=nexearch",
+                        headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            _extract_blog_urls(soup, urls, top_titles, seen_ids, max_count=3)
+        except Exception:
+            pass
 
-        # 상위글 제목+URL 수집 (최대 5개)
-        top_titles = []
-        urls = []
-        for item in soup.select('.api_txt_lines.total_tit'):
-            title_text = item.get_text(strip=True)
-            href = item.get('href', '')
-            if title_text and href and 'blog.naver.com' in href:
-                top_titles.append(title_text)
-                if href not in urls:
-                    urls.append(href)
-                if len(top_titles) >= 5:
-                    break
-
-        # 셀렉터 실패 시 fallback
-        if not urls:
-            for a in soup.find_all('a', href=re.compile(r'blog\.naver\.com/[^/]+/\d+')):
-                href = a.get('href', '')
-                title_text = a.get_text(strip=True)
-                if href not in urls:
-                    urls.append(href)
-                    if title_text and len(title_text) > 5:
-                        top_titles.append(title_text)
-                if len(urls) >= 5:
-                    break
+        # Phase 2: 블로그탭(blog) — 나머지 보충 (총 5개까지)
+        remaining = 5 - len(top_titles)
+        if remaining > 0:
+            try:
+                r = req.get(f"https://search.naver.com/search.naver?query={quote(keyword)}&where=blog",
+                            headers=headers, timeout=10)
+                soup = BeautifulSoup(r.text, 'html.parser')
+                _extract_blog_urls(soup, urls, top_titles, seen_ids, max_count=remaining)
+            except Exception:
+                pass
 
         if not urls:
             return {'photo_count': 8, 'keyword_repeat': 5, 'char_count': 0, 'reference_body': '', 'top_titles': []}
