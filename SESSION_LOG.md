@@ -239,3 +239,49 @@
 
 ### 이어가기
 > 다음 세션 시작 시: 카페 크롤링 해결 (다른 AI 설계 결과 받아서 적용) + 크롤링 실패 시 사용자 알림 기능 전체 채널 적용 + 카페 외부 댓글/답글 프롬프트 테스트 계속
+
+## 세션 #8 — 2026-04-18
+
+### 완료
+- **카페 크롤링 v3 완성** (쿠키 주입 + 3-Tier 안정화):
+  - `src/services/cafe_crawler.py` 전면 개편 — NAVER_COOKIE_JSON 지원, Playwright context.add_cookies 쿠키 주입, 공유 브라우저 풀(전역 1개 재사용), 로그인 상태 선검증 `verify_login_state()`, auth_blocked 상태 분리, shutdown_browser()
+  - 테스트 결과: 멤버전용 카페 포함 3/3 성공 (yangmom/709339, pusanmommy/1437071, move79/5948782)
+  - `.env` 네이버 쿠키 주입 확인 후 Tier 2/3 정상 동작
+- **전체 코드 점검 (4.7 업그레이드 기념) + 4건 수정**:
+  - cafe.py:1123-1161 `cafe_auto_comment` TOCTOU 해결 (load-modify-save를 `_naver_accounts_lock` 하나로 감쌈)
+  - cafe.py:1125 `asyncio.get_event_loop()` → `get_running_loop()` deprecated 제거
+  - youtube_bot.py `_start_stealth` 예외 시 playwright/browser 정리 보장
+  - naver_search.py 중복 `analyze_cafe_article`/`analyze_top_for_cafe` 제거 (cafe.py로 통합, 63줄 순감소)
+- **쓰레드 레퍼런스 크롤러 구현** (Plan Mode 기반 설계 → 구현):
+  - 신규 `src/services/threads_crawler.py` (threads 전용 독립 공유 브라우저, Instagram 쿠키 주입, JSON/DOM Tier, CrawlResponse 통일 응답)
+  - `_cookies_for_playwright`에 domain 파라미터 추가 (범용화)
+  - 신규 엔드포인트 5개: POST /crawl-keyword, POST /crawl-username, POST /references, GET /references, DELETE /references/{id} (180→185 라우트)
+  - API 레벨 rate limiter (60초 내 최대 3회 → HTTP 429)
+  - 저장소 스키마: id/source/source_value/keyword/username/text/url/likes/replies/reposts/hashtags/engagement_score/crawled_at
+  - 중복 해시: sha1(source|source_value|normalize(text)[:300]) — 중복 시 engagement + crawled_at 최신값 갱신
+  - 서버 측 필드 보정: `_threads_normalize_post()` (url/username/engagement_score 재계산)
+  - TOCTOU 방지: load-modify-save를 `_threads_lock` 내부에서 원자적으로
+  - 대시보드 "레퍼런스" 탭 신규 (영역 A: 크롤링+미리보기 / 영역 B: 저장된 라이브러리)
+  - javascript: URI XSS 방어 (https?:// prefix 체크 + rel=noopener)
+  - `.env.example` 신규 생성 (쿠키 세팅 가이드 포함)
+- **code-reviewer 5건 반영**: 좀비 playwright 정리, goto 예외 로깅, DOM 파싱 실패 로깅, TOCTOU 방지, URL XSS 방어
+- 총 3커밋 (6045666 카페v3, 129a06b 점검 4건, cd2bb05 쓰레드 크롤러)
+
+### 남은 작업 (우선순위)
+1. **Instagram 쿠키 세팅 후 실제 크롤링 검증** — 부계정으로 인스타 로그인 → `.env`에 THREADS_COOKIE_JSON 주입 → 키워드/username 크롤링 테스트
+2. **카페 외부 댓글/답글 프롬프트 테스트 계속** — 시크릿 채팅에서 결과물 뽑아서 문제점 피드백 (일상글 프롬프트 수정 대기 중)
+3. **멘토 프롬프트 원문 9개 교체** — 블로그2+카페외부3+지식인3+유튜브1 (테스트 확정 후)
+4. **크롤링 실패 시 사용자 알림 기능 전체 채널 확대** — 블로그, 카페 외부만 구현되어 있음
+5. **Strategist 9개 활성화** — strategy API 개발 (여전히 대기)
+
+### 학습
+- 코드 변경 시 반드시 code-reviewer 돌려라 — 이유: 4.7 점검에서 TOCTOU 1건, 리소스 누수 1건, deprecated 1건, 중복 코드 1건 발견. 점검 안 했으면 유지보수 때 폭발
+- Plan Mode의 설계 → AskUserQuestion → Codex 피드백 → v3 확정 플로우는 효과적이었다 — 이유: 1차 설계의 "cafe_crawler 브라우저 그대로 공유" 가정이 실제로는 네이버 쿠키 묶임 때문에 불가능했는데 Codex 피드백이 잡음. v3가 처음보다 훨씬 견고함
+- 크롤링 시 쿠키 없는 상태와 만료된 상태를 다르게 취급해라 — 이유: `auth_required` vs `auth_blocked` 분리가 UI에서 "쿠키 세팅 안내" vs "재로그인 안내" 메시지 분기에 필수
+- 저장 엔드포인트는 UI 입력 신뢰하지 말고 서버에서 재계산해라 — 이유: engagement_score는 likes/replies/reposts에서 서버가 재계산해야 스키마 오염 방지
+- TOCTOU 방지에 load-modify-save 전체를 하나의 lock 블록으로 감싸라 — 이유: load와 save만 lock 잡으면 두 요청이 같은 값 읽고 덮어씀
+- 중복 저장 시 그냥 skip 하지 말고 engagement 수치 갱신해라 — 이유: 벤치마킹 데이터는 시간 지나면 좋아요/댓글 변함. 최신값 유지가 가치 있음
+- url 링크 렌더링 시 https?:// prefix 체크 필수 — 이유: escapeHtml만으로는 javascript: URI를 막지 못함
+
+### 이어가기
+> 다음 세션 시작 시: Instagram 쿠키 세팅 → 쓰레드 키워드 크롤링 실제 검증 + 라이브러리 저장 플로우 UI 테스트. 이어서 카페 외부 댓글/답글 프롬프트 테스트 재개.
